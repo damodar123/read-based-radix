@@ -40,7 +40,7 @@ typedef union {
 } cacheline_t;
 
 NetworkPartitioning::NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
-		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, hpcjoin::data::Window* offsetWindow) {
+		uint64_t* outerHistogram, uint64_t* innerOffsets, uint64_t* outerOffsets, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, hpcjoin::data::Window* offsetWindow) {
 
 	this->nodeId = nodeId;
 
@@ -49,7 +49,8 @@ NetworkPartitioning::NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relatio
 
 	this->innerHistogram = innerHistogram;
 	this->outerHistogram = outerHistogram;
-	this->offsetAndSize = offsetAndSize;
+	this->innerOffsets = innerOffsets;
+	this->outerOffsets = outerOffsets;
 
 	this->innerWindow = innerWindow;
 	this->outerWindow = outerWindow;
@@ -65,9 +66,8 @@ NetworkPartitioning::~NetworkPartitioning() {
 void NetworkPartitioning::execute() {
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is communicating Offsets and Size of both the relations", this->nodeId);
-	communicateOffsetandSize(offsetWindow, innerWindow, innerRelation, innerHistogram, offsetAndSize);
+	communicateOffsetandSize(offsetWindow, innerWindow, innerRelation, innerHistogram);
 
-	printf("Communication DONE \n");
 	return;
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning inner relation", this->nodeId);
@@ -79,13 +79,12 @@ void NetworkPartitioning::execute() {
 }
 
 void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation,
-		uint64_t* innerHistogram, offsetandsizes_t* offsetAndSize) 
+		uint64_t* innerHistogram) 
 {
 
 #if 1
 	offsetWindow->start();
 
-	uint64_t p;
 	uint64_t const numberOfElements = relation->getLocalSize();
 	hpcjoin::data::Tuple * const data = relation->getData();
 	uint64_t const partitionCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT;
@@ -94,7 +93,7 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is setting counter to zero", this->nodeId);
 
-	for (p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
+	for (uint32_t p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
 	{
 		inCacheBuffer[p].data.inCacheCounter = 0;
 		inCacheBuffer[p].data.memoryCounter = 0;
@@ -102,7 +101,8 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 
 	uint64_t const elementsPerChunk = numberOfElements/partitionCount;
 	uint64_t const elementsInLastChunk = numberOfElements%partitionCount;
-	p = 0;
+
+	printf("starting elements\n");
 	for (uint64_t i = 0; i < numberOfElements; ++i) 
 	{
 		uint32_t partitionId = HASH_BIT_MODULO(data[i].key, hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT - 1, 0);
@@ -116,16 +116,12 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 		++inCacheCounter;
 
 		// Check if cache line is full
-		if (inCacheCounter == TUPLES_PER_CACHELINE) 
-		{
-			if (p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT)
-			{
-				
-				//MPI_Put();
-			}
+		if (inCacheCounter == TUPLES_PER_CACHELINE) {
+			printf("In Cache full partition = %d, offset=%d, memoryCounter=%d, startoffset=%p, index=%p\n", partitionId, this->innerOffsets[partitionId], memoryCounter, ((char *) innerWindow->data), (((char *) innerWindow->data) + (this->innerOffsets[partitionId])));
+
 			// Move cache line to memory buffer
-			char *inMemoryStreamDestination = (((char *) innerWindow->data) + (offsetAndSize[partitionId].partitonOffsetInner)) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
-			memcpy(inMemoryStreamDestination, cacheLine, NETWORK_PARTITIONING_CACHELINE_SIZE);
+			char *inMemoryStreamDestination = (((char *) innerWindow->data) + (this->innerOffsets[partitionId])) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
+			streamWrite(inMemoryStreamDestination, cacheLine);
 
 			++memoryCounter;
 			inCacheCounter = 0;
@@ -278,18 +274,23 @@ void NetworkPartitioning::partition(hpcjoin::data::Relation *relation, hpcjoin::
 
 inline void NetworkPartitioning::streamWrite(void* to, void* from) {
 
+	printf("in stream write\n");
 	JOIN_ASSERT(to != NULL, "Network Partitioning", "Stream destination should not be NULL");
 	JOIN_ASSERT(from != NULL, "Network Partitioning", "Stream source should not be NULL");
 
 	JOIN_ASSERT(((uint64_t) to) % NETWORK_PARTITIONING_CACHELINE_SIZE == 0, "Network Partitioning", "Stream destination not aligned");
 	JOIN_ASSERT(((uint64_t) from) % NETWORK_PARTITIONING_CACHELINE_SIZE == 0, "Network Partitioning", "Stream source not aligned");
 
+	printf("reister 1 stream write\n");
 	register __m256i * d1 = (__m256i *) to;
 	register __m256i s1 = *((__m256i *) from);
+	printf("reister 2 stream write\n");
 	register __m256i * d2 = d1 + 1;
 	register __m256i s2 = *(((__m256i *) from) + 1);
 
+	printf("transfer 1 stream write\n");
 	_mm256_stream_si256(d1, s1);
+	printf("transfer 2 stream write\n");
 	_mm256_stream_si256(d2, s2);
 
 	/*
@@ -307,6 +308,8 @@ inline void NetworkPartitioning::streamWrite(void* to, void* from) {
     _mm_stream_si128 (d3, s3);
     _mm_stream_si128 (d4, s4);
     */
+
+	printf("end stream write\n");
 }
 
 task_type_t NetworkPartitioning::getType() {

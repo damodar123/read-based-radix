@@ -10,6 +10,9 @@
 #include <hpcjoin/tasks/Task.h>
 #include <hpcjoin/data/Window.h>
 #include <hpcjoin/data/Relation.h>
+#include <hpcjoin/histograms/OffsetMap.h>
+
+using namespace hpcjoin::histograms;
 
 namespace hpcjoin {
 namespace tasks {
@@ -17,9 +20,8 @@ namespace tasks {
 class NetworkPartitioning : public Task {
 
 public:
-
-	NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation *innerRelation, hpcjoin::data::Relation *outerRelation, uint64_t* innerHistogram, 
-		uint64_t* outerHistogram, hpcjoin::data::Window *innerWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Window *offsetWindow);
+	NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
+		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, hpcjoin::data::Window* offsetWindow); 
 	~NetworkPartitioning();
 
 public:
@@ -30,7 +32,8 @@ public:
 protected:
 
 	void partition(hpcjoin::data::Relation *relation, hpcjoin::data::Window *window);
-	void communicateOffsetandSize(hpcjoin::data::Relation *relation, uint64_t* innerHistogram, uint64_t* outerHistogram, hpcjoin::data::Window *window);
+	void communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation, uint64_t* innerHistogram,
+			offsetandsizes_t* offsetAndSize);
 
 protected:
 
@@ -41,6 +44,7 @@ protected:
 
 	uint64_t *innerHistogram;
 	uint64_t *outerHistogram;
+	offsetandsizes_t *offsetAndSize;
 
 	hpcjoin::data::Window *innerWindow;
 	hpcjoin::data::Window *outerWindow;

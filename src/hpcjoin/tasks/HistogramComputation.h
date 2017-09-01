@@ -14,6 +14,8 @@
 #include <hpcjoin/histograms/AssignmentMap.h>
 #include <hpcjoin/histograms/OffsetMap.h>
 
+using namespace hpcjoin::histograms;
+
 namespace hpcjoin {
 namespace tasks {
 
@@ -39,12 +41,7 @@ public:
 	uint32_t *getAssignment();
 	uint64_t *getInnerRelationLocalHistogram();
 	uint64_t *getOuterRelationLocalHistogram();
-	uint64_t *getInnerRelationGlobalHistogram();
-	uint64_t *getOuterRelationGlobalHistogram();
-	uint64_t *getInnerRelationBaseOffsets();
-	uint64_t *getOuterRelationBaseOffsets();
-	uint64_t *getInnerRelationWriteOffsets();
-	uint64_t *getOuterRelationWriteOffsets();
+	offsetandsizes_t *getOffsetAndSize();
 
 protected:
 
@@ -62,8 +59,7 @@ protected:
 
 	hpcjoin::histograms::AssignmentMap *assignment;
 
-	hpcjoin::histograms::OffsetMap *innerOffsets;
-	hpcjoin::histograms::OffsetMap *outerOffsets;
+	hpcjoin::histograms::OffsetMap *offsetandsize;
 
 };
 

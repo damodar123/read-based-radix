@@ -16,11 +16,19 @@
 namespace hpcjoin {
 namespace histograms {
 
+	typedef struct {
+		uint64_t partitonOffsetInner;
+		uint64_t partitionSizeInner;
+		uint64_t partitonOffsetOuter;
+		uint64_t partitionSizeOuter;
+
+	}offsetandsizes_t;
+
 class OffsetMap {
 
 public:
 
-	OffsetMap(uint32_t numberOfProcesses, hpcjoin::histograms::LocalHistogram *localHistogram, hpcjoin::histograms::GlobalHistogram *globalHistogram, hpcjoin::histograms::AssignmentMap *assignment);
+	OffsetMap(uint32_t numberOfProcesses, hpcjoin::histograms::LocalHistogram *innerHistogram, hpcjoin::histograms::LocalHistogram *outerHistogram, hpcjoin::histograms::AssignmentMap *assignment);
 	~OffsetMap();
 
 public:
@@ -29,26 +37,17 @@ public:
 
 public:
 
-	uint64_t *getBaseOffsets();
-	uint64_t *getRelativeWriteOffsets();
-	uint64_t *getAbsoluteWriteOffsets();
-
-protected:
-
-	void computeBaseOffsets();
-	void computeRelativePrivateOffsets();
-	void computeAbsolutePrivateOffsets();
+	offsetandsizes_t *getOffsetAndSize();
+	void computeOffsetAndSize();
 
 protected:
 
 	uint32_t numberOfProcesses;
-	hpcjoin::histograms::LocalHistogram *localHistogram;
-	hpcjoin::histograms::GlobalHistogram *globalHistogram;
+	hpcjoin::histograms::LocalHistogram *innerHistogram;
+	hpcjoin::histograms::LocalHistogram *outerHistogram;
 	hpcjoin::histograms::AssignmentMap *assignment;
 
-	uint64_t *baseOffsets;
-	uint64_t *relativeWriteOffsets;
-	uint64_t *absoluteWriteOffsets;
+	offsetandsizes_t *offsetAndSize;
 
 };
 

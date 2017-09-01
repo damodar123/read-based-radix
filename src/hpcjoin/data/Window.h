@@ -50,11 +50,11 @@ public:
 public:
 
 	void assertAllTuplesWritten();
+	hpcjoin::data::CompressedTuple *data;
 
 protected:
 
 	uint64_t localWindowSize;
-	hpcjoin::data::CompressedTuple *data;
 
 	#ifdef USE_FOMPI
 	foMPI_Win *window;

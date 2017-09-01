@@ -56,7 +56,7 @@ void HashJoin::join() {
 	histogramComputation->execute();
 	hpcjoin::performance::Measurements::stopHistogramComputation();
 	JOIN_MEM_DEBUG("Histogram phase completed");
-#if 1 
+#if 0 
 	if (this->nodeId == hpcjoin::core::Configuration::RESULT_AGGREGATION_NODE) 
 	{
 		uint64_t *innerhistogram = histogramComputation->getInnerRelationLocalHistogram();
@@ -104,10 +104,10 @@ void HashJoin::join() {
 	/**
 	 * Network partitioning
 	 */
-
 	hpcjoin::performance::Measurements::startNetworkPartitioning();
 	hpcjoin::tasks::NetworkPartitioning *networkPartitioning = new hpcjoin::tasks::NetworkPartitioning(this->nodeId, this->innerRelation, this->outerRelation, 
-			histogramComputation->getInnerRelationLocalHistogram(), histogramComputation->getOuterRelationLocalHistogram(), innerWindow, outerWindow, offsetWindow);
+			histogramComputation->getInnerRelationLocalHistogram(), histogramComputation->getOuterRelationLocalHistogram(), histogramComputation->getOffsetAndSize(),
+			innerWindow, outerWindow, offsetWindow);
 	networkPartitioning->execute();
 	hpcjoin::performance::Measurements::stopNetworkPartitioning();
 	JOIN_MEM_DEBUG("Network phase completed");
@@ -120,7 +120,6 @@ void HashJoin::join() {
 	//delete this->innerRelation;
 	//delete this->outerRelation;
 	JOIN_MEM_DEBUG("Input relations deleted");
-
 	/**********************************************************************/
 
 	/**
