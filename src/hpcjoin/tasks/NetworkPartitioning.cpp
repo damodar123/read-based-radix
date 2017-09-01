@@ -40,7 +40,8 @@ typedef union {
 } cacheline_t;
 
 NetworkPartitioning::NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
-		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, hpcjoin::data::Window* offsetWindow) {
+		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, 
+		hpcjoin::data::Window* offsetWindow, uint32_t* assignment) {
 
 	this->nodeId = nodeId;
 
@@ -54,6 +55,8 @@ NetworkPartitioning::NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relatio
 	this->innerWindow = innerWindow;
 	this->outerWindow = outerWindow;
 	this->offsetWindow = offsetWindow;
+
+	this->assignment = assignment;
 
 	JOIN_ASSERT(hpcjoin::core::Configuration::CACHELINE_SIZE_BYTES == NETWORK_PARTITIONING_CACHELINE_SIZE, "Network Partitioning", "Cache line sizes do not match. This is a hack and the value needs to be edited in two places.");
 
@@ -121,7 +124,8 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 			if (p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT)
 			{
 				
-				//MPI_Put();
+				MPI_Put(&offsetAndSize[partitionId], sizeof(offsetandsizes_t), MPI_CHAR, this->assignment[partitionId], partitionId*sizeof(offsetandsizes_t),
+						 sizeof(offsetandsizes_t), MPI_CHAR, *offsetWindow->window);
 			}
 			// Move cache line to memory buffer
 			char *inMemoryStreamDestination = (((char *) innerWindow->data) + (offsetAndSize[partitionId].partitonOffsetInner)) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
