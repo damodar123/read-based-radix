@@ -24,14 +24,17 @@ HistogramComputation::HistogramComputation(uint32_t numberOfNodes, uint32_t node
 
 	this->innerRelationLocalHistogram = new hpcjoin::histograms::LocalHistogram(innerRelation);
 	this->outerRelationLocalHistogram = new hpcjoin::histograms::LocalHistogram(outerRelation);
-
+#ifdef ETH_APPROACH
 	this->innerRelationGlobalHistogram = new hpcjoin::histograms::GlobalHistogram(this->innerRelationLocalHistogram);
 	this->outerRelationGlobalHistogram = new hpcjoin::histograms::GlobalHistogram(this->outerRelationLocalHistogram);
 
 	this->assignment = new hpcjoin::histograms::AssignmentMap(this->numberOfNodes, this->innerRelationGlobalHistogram, this->outerRelationGlobalHistogram);
+#else
+	this->assignment = new hpcjoin::histograms::AssignmentMap(this->numberOfNodes, NULL, NULL);
+#endif
 
-	this->innerOffsets = new hpcjoin::histograms::OffsetMap(this->numberOfNodes, this->innerRelationLocalHistogram, this->innerRelationGlobalHistogram, this->assignment);
-	this->outerOffsets = new hpcjoin::histograms::OffsetMap(this->numberOfNodes, this->outerRelationLocalHistogram, this->outerRelationGlobalHistogram, this->assignment);
+	this->innerOffsets = new hpcjoin::histograms::OffsetMap(this->numberOfNodes, this->innerRelationLocalHistogram, NULL, this->assignment);
+	this->outerOffsets = new hpcjoin::histograms::OffsetMap(this->numberOfNodes, this->outerRelationLocalHistogram, NULL, this->assignment);
 
 }
 
@@ -39,9 +42,10 @@ HistogramComputation::~HistogramComputation() {
 
 	delete this->innerRelationLocalHistogram;
 	delete this->outerRelationLocalHistogram;
-
+#ifdef ETH_APPROACH
 	delete this->innerRelationGlobalHistogram;
 	delete this->outerRelationGlobalHistogram;
+#endif
 
 	delete this->assignment;
 
@@ -54,12 +58,11 @@ void HistogramComputation::execute() {
 
 	this->innerRelationLocalHistogram->computeLocalHistogram();
 	this->outerRelationLocalHistogram->computeLocalHistogram();
-
+#ifdef ETH_APPROACH
 	this->innerRelationGlobalHistogram->computeGlobalHistogram();
 	this->outerRelationGlobalHistogram->computeGlobalHistogram();
-
+#endif
 	this->assignment->computePartitionAssignment();
-
 	this->innerOffsets->computeOffsets();
 	this->outerOffsets->computeOffsets();
 

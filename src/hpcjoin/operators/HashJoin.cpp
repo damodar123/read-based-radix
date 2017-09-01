@@ -39,7 +39,6 @@ HashJoin::~HashJoin() {
 }
 
 void HashJoin::join() {
-
 	/**********************************************************************/
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -57,7 +56,28 @@ void HashJoin::join() {
 	histogramComputation->execute();
 	hpcjoin::performance::Measurements::stopHistogramComputation();
 	JOIN_MEM_DEBUG("Histogram phase completed");
-
+#if 1 
+	if (this->nodeId == hpcjoin::core::Configuration::RESULT_AGGREGATION_NODE) 
+	{
+		uint64_t *innerhistogram = histogramComputation->getInnerRelationLocalHistogram();
+		uint64_t *outerhistogram = histogramComputation->getOuterRelationLocalHistogram();
+		uint64_t *innerOffset = histogramComputation->getInnerRelationBaseOffsets();
+		uint64_t *outerOffset = histogramComputation->getOuterRelationBaseOffsets();
+		printf("Inner Local Histogram = ");
+		for(uint32_t p=0; p<hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
+		{
+			printf("\t %d,%d", innerhistogram[p], innerOffset[p]);
+		}
+		printf("\n");
+		for(uint32_t p=0; p<hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
+		{
+			printf("\t %d,%d", outerhistogram[p], outerOffset[p]);
+		}
+		printf("\n");
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+	return;
+#endif
 	/**********************************************************************/
 
 	/**
@@ -65,15 +85,19 @@ void HashJoin::join() {
 	 */
 
 	hpcjoin::performance::Measurements::startWindowAllocation();
+	/* Window creation + Data Arrangement + Offset calculation */
+	hpcjoin::data::Window *offsetWindow = new hpcjoin::data::Window(this->numberOfNodes, this->nodeId, histogramComputation->getAssignment(),
+			NULL, NULL, NULL, NULL, true);
+
 	hpcjoin::data::Window *innerWindow = new hpcjoin::data::Window(this->numberOfNodes, this->nodeId, histogramComputation->getAssignment(),
-			histogramComputation->getInnerRelationLocalHistogram(), histogramComputation->getInnerRelationGlobalHistogram(), histogramComputation->getInnerRelationBaseOffsets(),
-			histogramComputation->getInnerRelationWriteOffsets());
+			histogramComputation->getInnerRelationLocalHistogram(), this->innerRelation, NULL, NULL, false);
 
 	hpcjoin::data::Window *outerWindow = new hpcjoin::data::Window(this->numberOfNodes, this->nodeId, histogramComputation->getAssignment(),
-			histogramComputation->getOuterRelationLocalHistogram(), histogramComputation->getOuterRelationGlobalHistogram(), histogramComputation->getOuterRelationBaseOffsets(),
-			histogramComputation->getOuterRelationWriteOffsets());
+			histogramComputation->getOuterRelationLocalHistogram(), this->outerRelation, NULL, NULL, false);
 	hpcjoin::performance::Measurements::stopWindowAllocation();
 	JOIN_MEM_DEBUG("Window allocated");
+	//MPI_Barrier(MPI_COMM_WORLD);
+	//return;
 
 	/**********************************************************************/
 
@@ -82,11 +106,15 @@ void HashJoin::join() {
 	 */
 
 	hpcjoin::performance::Measurements::startNetworkPartitioning();
-	hpcjoin::tasks::NetworkPartitioning *networkPartitioning = new hpcjoin::tasks::NetworkPartitioning(this->nodeId, this->innerRelation, this->outerRelation, innerWindow,
-			outerWindow);
+	hpcjoin::tasks::NetworkPartitioning *networkPartitioning = new hpcjoin::tasks::NetworkPartitioning(this->nodeId, this->innerRelation, this->outerRelation, 
+			histogramComputation->getInnerRelationLocalHistogram(), histogramComputation->getOuterRelationLocalHistogram(), innerWindow, outerWindow, offsetWindow);
 	networkPartitioning->execute();
 	hpcjoin::performance::Measurements::stopNetworkPartitioning();
 	JOIN_MEM_DEBUG("Network phase completed");
+
+	printf("Dhamu Network phase completed\n");
+	MPI_Barrier(MPI_COMM_WORLD);
+	return;
 
 	// OPTIMIZATION Save memory as soon as possible
 	//delete this->innerRelation;

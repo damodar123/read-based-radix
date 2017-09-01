@@ -18,7 +18,8 @@ class NetworkPartitioning : public Task {
 
 public:
 
-	NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation *innerRelation, hpcjoin::data::Relation *outerRelation, hpcjoin::data::Window *innerWindow, hpcjoin::data::Window *outerWindow);
+	NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation *innerRelation, hpcjoin::data::Relation *outerRelation, uint64_t* innerHistogram, 
+		uint64_t* outerHistogram, hpcjoin::data::Window *innerWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Window *offsetWindow);
 	~NetworkPartitioning();
 
 public:
@@ -29,6 +30,7 @@ public:
 protected:
 
 	void partition(hpcjoin::data::Relation *relation, hpcjoin::data::Window *window);
+	void communicateOffsetandSize(hpcjoin::data::Relation *relation, uint64_t* innerHistogram, uint64_t* outerHistogram, hpcjoin::data::Window *window);
 
 protected:
 
@@ -37,8 +39,12 @@ protected:
 	hpcjoin::data::Relation *innerRelation;
 	hpcjoin::data::Relation *outerRelation;
 
+	uint64_t *innerHistogram;
+	uint64_t *outerHistogram;
+
 	hpcjoin::data::Window *innerWindow;
 	hpcjoin::data::Window *outerWindow;
+	hpcjoin::data::Window *offsetWindow;
 
 protected:
 

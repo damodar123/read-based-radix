@@ -16,6 +16,7 @@
 #include <stdint.h>
 
 #include <hpcjoin/data/CompressedTuple.h>
+#include <hpcjoin/data/Relation.h>
 
 namespace hpcjoin {
 namespace data {
@@ -24,7 +25,7 @@ class Window {
 
 public:
 
-	Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t *assignment, uint64_t *localHistogram, uint64_t *globalHistogram, uint64_t *baseOffsets, uint64_t *writeOffsets);
+	Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t *assignment, uint64_t *localHistogram, hpcjoin::data::Relation *relationData, uint64_t *baseOffsets, uint64_t *writeOffsets, bool isOffsetWindow);
 	~Window();
 
 public:
@@ -70,8 +71,10 @@ protected:
 	uint32_t *assignment;
 	uint64_t *localHistogram;
 	uint64_t *globalHistogram;
+	hpcjoin::data::Relation *relationData;
 	uint64_t *baseOffsets;
 	uint64_t *writeOffsets;
+	bool isOffsetWindow;
 
 protected:
 

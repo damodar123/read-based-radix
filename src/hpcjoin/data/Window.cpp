@@ -15,32 +15,47 @@
 namespace hpcjoin {
 namespace data {
 
-Window::Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t* assignment, uint64_t* localHistogram, uint64_t* globalHistogram, uint64_t* baseOffsets, uint64_t* writeOffsets) {
+Window::Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t* assignment, uint64_t* LocalHistogram,  hpcjoin::data::Relation *relationData, uint64_t* baseOffsets, uint64_t* writeOffsets, bool isOffsetWindow) {
 
 	this->numberOfNodes = numberOfNodes;
 	this->nodeId = nodeId;
 	this->assignment = assignment;
 	this->localHistogram = localHistogram;
-	this->globalHistogram = globalHistogram;
+	this->globalHistogram = NULL;
+	this->relationData = relationData;
 	this->baseOffsets = baseOffsets;
 	this->writeOffsets = writeOffsets;
+	this->isOffsetWindow = isOffsetWindow;
 	this->writeCounters = (uint64_t *) calloc(hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT, sizeof(uint64_t));
-	this->localWindowSize = computeLocalWindowSize();
-
-	#ifdef USE_FOMPI
-	this->window = (foMPI_Win *) calloc(1, sizeof(foMPI_Win));
-	#else
-	this->window = (MPI_Win *) calloc(1, sizeof(MPI_Win));
-	#endif
+	//this->localWindowSize = computeLocalWindowSize();
 
 
-	MPI_Alloc_mem(localWindowSize * sizeof(hpcjoin::data::CompressedTuple), MPI_INFO_NULL, &(this->data));
-	#ifdef USE_FOMPI
-	foMPI_Win_create(this->data, localWindowSize * sizeof(hpcjoin::data::CompressedTuple), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
-	#else
-	MPI_Win_create(this->data, localWindowSize * sizeof(hpcjoin::data::CompressedTuple), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
-	#endif
+	if (this->isOffsetWindow)
+	{
+		this->localWindowSize = (hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT * 4);
+		MPI_Alloc_mem(localWindowSize * sizeof(uint64_t), MPI_INFO_NULL, &(this->data));
+		#ifdef USE_FOMPI
+		this->window = (foMPI_Win *) calloc(1, sizeof(foMPI_Win));
+		foMPI_Win_create(this->data, localWindowSize * sizeof(uint64_t), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
+		#else
+		this->window = (MPI_Win *) calloc(1, sizeof(MPI_Win));
+		MPI_Win_create(this->data, localWindowSize * sizeof(uint64_t), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
+		#endif
+	}
+	else
+	{
+		this->localWindowSize = this->relationData->getLocalSize() * sizeof(hpcjoin::data::CompressedTuple);
+		MPI_Alloc_mem(localWindowSize * sizeof(hpcjoin::data::CompressedTuple), MPI_INFO_NULL, &(this->data));
+		#ifdef USE_FOMPI
+		this->window = (foMPI_Win *) calloc(1, sizeof(foMPI_Win));
+		foMPI_Win_create(this->data, localWindowSize * sizeof(hpcjoin::data::CompressedTuple), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
+		#else
+		this->window = (MPI_Win *) calloc(1, sizeof(MPI_Win));
+		MPI_Win_create(this->data, localWindowSize * sizeof(hpcjoin::data::CompressedTuple), 1, MPI_INFO_NULL, MPI_COMM_WORLD, window);
+		#endif
+	}
 
+	printf("isOffsetWindow = %d, Window is at address %p to %p", this->isOffsetWindow, this->data, this->data + localWindowSize);
 	JOIN_DEBUG("Window", "Window is at address %p to %p", this->data, this->data + localWindowSize);
 
 }

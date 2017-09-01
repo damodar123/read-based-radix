@@ -19,12 +19,12 @@ OffsetMap::OffsetMap(uint32_t numberOfProcesses, LocalHistogram* localHistogram,
 
 	this->numberOfProcesses = numberOfProcesses;
 	this->localHistogram = localHistogram;
-	this->globalHistogram = globalHistogram;
+	this->globalHistogram = NULL;
 	this->assignment = assignment;
 
 	this->baseOffsets = (uint64_t *) calloc(hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT, sizeof(uint64_t));
-	this->relativeWriteOffsets = (uint64_t *) calloc(hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT, sizeof(uint64_t));
-	this->absoluteWriteOffsets = (uint64_t *) calloc(hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT, sizeof(uint64_t));
+	this->relativeWriteOffsets = NULL;
+	this->absoluteWriteOffsets = NULL;
 
 }
 
@@ -43,8 +43,10 @@ void OffsetMap::computeOffsets() {
 #endif
 
 	computeBaseOffsets();
+#ifdef ETH_APPROACH
 	computeRelativePrivateOffsets();
 	computeAbsolutePrivateOffsets();
+#endif
 
 #ifdef MEASUREMENT_DETAILS_HISTOGRAM
 	hpcjoin::performance::Measurements::stopHistogramOffsetComputation();
@@ -52,8 +54,8 @@ void OffsetMap::computeOffsets() {
 
 }
 
+#ifdef ETH_APPROACH
 void OffsetMap::computeBaseOffsets() {
-
 	uint64_t *currentOffsets = (uint64_t *) calloc(this->numberOfProcesses, sizeof(uint64_t));
 	uint32_t *partitionAssignment = this->assignment->getPartitionAssignment();
 	uint64_t *histogram = this->globalHistogram->getGlobalHistogram();
@@ -67,6 +69,19 @@ void OffsetMap::computeBaseOffsets() {
 	free(currentOffsets);
 
 }
+#else
+
+void OffsetMap::computeBaseOffsets() {
+
+	uint64_t *histogram = this->localHistogram->getLocalHistogram();
+
+	this->baseOffsets[0] = histogram[0];
+	for (uint32_t i = 1; i < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++i) {
+		this->baseOffsets[i] = this->baseOffsets[i-1] + histogram[i]; 
+	}
+}
+
+#endif
 
 void OffsetMap::computeRelativePrivateOffsets() {
 
