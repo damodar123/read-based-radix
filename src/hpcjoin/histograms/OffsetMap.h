@@ -17,9 +17,9 @@ namespace hpcjoin {
 namespace histograms {
 
 	typedef struct {
-		uint64_t partitonOffsetInner;
+		uint64_t partitionOffsetInner;
 		uint64_t partitionSizeInner;
-		uint64_t partitonOffsetOuter;
+		uint64_t partitionOffsetOuter;
 		uint64_t partitionSizeOuter;
 
 	}offsetandsizes_t;

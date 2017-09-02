@@ -39,11 +39,12 @@ typedef union {
 
 } cacheline_t;
 
-NetworkPartitioning::NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
+NetworkPartitioning::NetworkPartitioning(uint32_t numberOfNodes, uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
 		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow, 
 		hpcjoin::data::Window* offsetWindow, uint32_t* assignment) {
 
 	this->nodeId = nodeId;
+	this->numberOfNodes = numberOfNodes;
 
 	this->innerRelation = innerRelation;
 	this->outerRelation = outerRelation;
@@ -69,7 +70,14 @@ void NetworkPartitioning::execute() {
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is communicating Offsets and Size of both the relations", this->nodeId);
 	communicateOffsetandSize(offsetWindow, innerWindow, innerRelation, innerHistogram, offsetAndSize);
+	MPI_Barrier(MPI_COMM_WORLD); //Testing..
 
+	offsetandsizes_t * read_data = (offsetandsizes_t *)offsetWindow->data;
+
+	for (uint32_t p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
+	{
+		printf(" Node =%d, partitionID=%d, Assigned=%d, Inner offset=%d, size=%d Outer offset=%d, size=%d\n", this->nodeId, p, this->assignment[p], read_data[p].partitionOffsetInner, read_data[p].partitionSizeInner, read_data[p].partitionOffsetOuter, read_data[p].partitionSizeOuter);
+	}
 	printf("Communication DONE \n");
 	return;
 
@@ -89,6 +97,7 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 	offsetWindow->start();
 
 	uint64_t p;
+	uint32_t partitionSlot;
 	uint64_t const numberOfElements = relation->getLocalSize();
 	hpcjoin::data::Tuple * const data = relation->getData();
 	uint64_t const partitionCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT;
@@ -97,14 +106,14 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is setting counter to zero", this->nodeId);
 
+	uint64_t partitonsPerProcessor = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
+
 	for (p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
 	{
 		inCacheBuffer[p].data.inCacheCounter = 0;
 		inCacheBuffer[p].data.memoryCounter = 0;
 	}
 
-	uint64_t const elementsPerChunk = numberOfElements/partitionCount;
-	uint64_t const elementsInLastChunk = numberOfElements%partitionCount;
 	p = 0;
 	for (uint64_t i = 0; i < numberOfElements; ++i) 
 	{
@@ -123,12 +132,14 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 		{
 			if (p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT)
 			{
-				
-				MPI_Put(&offsetAndSize[partitionId], sizeof(offsetandsizes_t), MPI_CHAR, this->assignment[partitionId], partitionId*sizeof(offsetandsizes_t),
-						 sizeof(offsetandsizes_t), MPI_CHAR, *offsetWindow->window);
+				partitionSlot = p / this->numberOfNodes;
+				MPI_Put(&offsetAndSize[p], sizeof(offsetandsizes_t), MPI_CHAR, this->assignment[p], 
+						sizeof(offsetandsizes_t)*(partitionSlot*this->numberOfNodes + this->nodeId),
+						sizeof(offsetandsizes_t), MPI_CHAR, *offsetWindow->window);
+				p++;
 			}
 			// Move cache line to memory buffer
-			char *inMemoryStreamDestination = (((char *) innerWindow->data) + (offsetAndSize[partitionId].partitonOffsetInner)) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
+			char *inMemoryStreamDestination = (((char *) innerWindow->data) + (offsetAndSize[partitionId].partitionOffsetInner)) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
 			memcpy(inMemoryStreamDestination, cacheLine, NETWORK_PARTITIONING_CACHELINE_SIZE);
 
 			++memoryCounter;
@@ -139,6 +150,15 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 		inCacheBuffer[partitionId].data.memoryCounter = memoryCounter;
 
 	}
+	if(p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT)
+	{
+		partitionSlot = p / this->numberOfNodes;
+		MPI_Put(&offsetAndSize[p], sizeof(offsetandsizes_t), MPI_CHAR, this->assignment[p], 
+				sizeof(offsetandsizes_t)*(partitionSlot*this->numberOfNodes + this->nodeId),
+				sizeof(offsetandsizes_t), MPI_CHAR, *offsetWindow->window);
+		p++;
+	}
+	offsetWindow->flush();
 	offsetWindow->stop();
 #endif
 }

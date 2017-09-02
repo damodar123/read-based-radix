@@ -32,7 +32,15 @@ Window::Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t* assignment, ui
 
 	if (this->isOffsetWindow)
 	{
-		this->localWindowSize = (hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT * 4);
+		uint32_t partitionsPerProcesses = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/numberOfNodes;
+		if(this->nodeId > partitionsPerProcesses*numberOfNodes)
+		{
+			this->localWindowSize = (this->numberOfNodes * 4 * (partitionsPerProcesses+1));
+		}
+		else
+		{
+			this->localWindowSize = (this->numberOfNodes * 4 * (partitionsPerProcesses));
+		}
 		MPI_Alloc_mem(localWindowSize * sizeof(uint64_t), MPI_INFO_NULL, &(this->data));
 		#ifdef USE_FOMPI
 		this->window = (foMPI_Win *) calloc(1, sizeof(foMPI_Win));

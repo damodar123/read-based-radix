@@ -105,7 +105,7 @@ void HashJoin::join() {
 	 * Network partitioning
 	 */
 	hpcjoin::performance::Measurements::startNetworkPartitioning();
-	hpcjoin::tasks::NetworkPartitioning *networkPartitioning = new hpcjoin::tasks::NetworkPartitioning(this->nodeId, this->innerRelation, this->outerRelation, 
+	hpcjoin::tasks::NetworkPartitioning *networkPartitioning = new hpcjoin::tasks::NetworkPartitioning(this->numberOfNodes, this->nodeId, this->innerRelation, this->outerRelation, 
 			histogramComputation->getInnerRelationLocalHistogram(), histogramComputation->getOuterRelationLocalHistogram(), histogramComputation->getOffsetAndSize(),
 			innerWindow, outerWindow, offsetWindow, histogramComputation->getAssignment());
 	networkPartitioning->execute();

@@ -41,14 +41,14 @@ void OffsetMap::computeOffsetAndSize() {
 	uint64_t *innerhistogram = this->innerHistogram->getLocalHistogram();
 	uint64_t *outerhistogram = this->outerHistogram->getLocalHistogram();
 
-	this->offsetAndSize[0].partitonOffsetInner = 0;
+	this->offsetAndSize[0].partitionOffsetInner = 0;
 	this->offsetAndSize[0].partitionSizeInner = innerhistogram[0];
-	this->offsetAndSize[0].partitonOffsetOuter = 0;
+	this->offsetAndSize[0].partitionOffsetOuter = 0;
 	this->offsetAndSize[0].partitionSizeOuter = outerhistogram[0];
 	for (uint32_t i = 1; i < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++i) {
-		this->offsetAndSize[i].partitonOffsetInner = this->offsetAndSize[i-1].partitonOffsetInner + innerhistogram[i];
+		this->offsetAndSize[i].partitionOffsetInner = this->offsetAndSize[i-1].partitionOffsetInner + innerhistogram[i];
 		this->offsetAndSize[i].partitionSizeInner = innerhistogram[i];
-		this->offsetAndSize[i].partitonOffsetOuter = this->offsetAndSize[i-1].partitonOffsetOuter + outerhistogram[i];
+		this->offsetAndSize[i].partitionOffsetOuter = this->offsetAndSize[i-1].partitionOffsetOuter + outerhistogram[i];
 		this->offsetAndSize[i].partitionSizeOuter = outerhistogram[i];
 	}
 

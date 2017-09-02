@@ -20,7 +20,7 @@ namespace tasks {
 class NetworkPartitioning : public Task {
 
 public:
-	NetworkPartitioning(uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
+	NetworkPartitioning(uint32_t numberOfNodes, uint32_t nodeId, hpcjoin::data::Relation* innerRelation, hpcjoin::data::Relation* outerRelation, uint64_t* innerHistogram, 
 		uint64_t* outerHistogram, offsetandsizes_t* offsetAndSize, hpcjoin::data::Window* innerWindow, hpcjoin::data::Window* outerWindow,
 		hpcjoin::data::Window* offsetWindow, uint32_t *assignment); 
 	~NetworkPartitioning();
@@ -39,6 +39,7 @@ protected:
 protected:
 
 	uint32_t nodeId;
+	uint32_t numberOfNodes;
 
 	hpcjoin::data::Relation *innerRelation;
 	hpcjoin::data::Relation *outerRelation;
