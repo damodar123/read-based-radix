@@ -19,20 +19,25 @@ class BuildProbe : public Task {
 
 public:
 
-	BuildProbe(uint64_t innerPartitionSize, hpcjoin::data::CompressedTuple *innerPartition, uint64_t outerPartitionSize, hpcjoin::data::CompressedTuple *outerPartition);
+	BuildProbe(uint64_t innerPartitionSize);
 	~BuildProbe();
 
 public:
 
 	void execute();
 	task_type_t getType();
+	void buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple *innerPart);
+	//void probeHT();
 
 protected:
 
 	uint64_t innerPartitionSize;
-	hpcjoin::data::CompressedTuple *innerPartition;
-	uint64_t outerPartitionSize;
-	hpcjoin::data::CompressedTuple *outerPartition;
+	uint64_t *hashTableNext;
+	uint64_t *hashTableBucket;
+
+	uint32_t keyShift;
+	uint32_t shiftBits;
+	uint64_t MASK;
 
 };
 

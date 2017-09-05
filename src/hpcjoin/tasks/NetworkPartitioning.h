@@ -7,6 +7,7 @@
 #ifndef HPCJOIN_TASKS_NETWORKPARTITIONING_H_
 #define HPCJOIN_TASKS_NETWORKPARTITIONING_H_
 
+#include <queue>
 #include <hpcjoin/tasks/Task.h>
 #include <hpcjoin/data/Window.h>
 #include <hpcjoin/data/Relation.h>
@@ -29,12 +30,16 @@ public:
 
 	void execute();
 	task_type_t getType();
+	static std::queue<hpcjoin::tasks::Task *> TASK_QUEUE;
 
 protected:
 
 	void partition(hpcjoin::data::Relation *relation, hpcjoin::data::Window *window);
 	void communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation, uint64_t* innerHistogram,
 			offsetandsizes_t* offsetAndSize);
+
+	void readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow);
+	void arrangeProbeRelation(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Relation *relation);
 
 protected:
 

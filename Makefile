@@ -14,7 +14,6 @@ SOURCE_FILES		= 	src/hpcjoin/main.cpp \
 						src/hpcjoin/performance/Measurements.cpp \
 						src/hpcjoin/tasks/HistogramComputation.cpp \
 						src/hpcjoin/tasks/NetworkPartitioning.cpp \
-						src/hpcjoin/tasks/LocalPartitioning.cpp \
 						src/hpcjoin/tasks/BuildProbe.cpp
 
 HEADER_FILES		= 	src/hpcjoin/utils/Debug.h \
@@ -34,7 +33,6 @@ HEADER_FILES		= 	src/hpcjoin/utils/Debug.h \
 						src/hpcjoin/tasks/Task.h \
 						src/hpcjoin/tasks/HistogramComputation.h \
 						src/hpcjoin/tasks/NetworkPartitioning.h \
-						src/hpcjoin/tasks/LocalPartitioning.h \
 						src/hpcjoin/tasks/BuildProbe.h
 						
 ########################################

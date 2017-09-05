@@ -12,6 +12,7 @@
 
 #include <hpcjoin/core/Configuration.h>
 #include <hpcjoin/data/CompressedTuple.h>
+#include <hpcjoin/tasks/BuildProbe.h>
 #include <hpcjoin/utils/Debug.h>
 #include <hpcjoin/performance/Measurements.h>
 
@@ -24,6 +25,8 @@
 
 namespace hpcjoin {
 namespace tasks {
+
+std::queue<hpcjoin::tasks::Task *> NetworkPartitioning::TASK_QUEUE;
 
 typedef union {
 
@@ -70,17 +73,24 @@ void NetworkPartitioning::execute() {
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is communicating Offsets and Size of both the relations", this->nodeId);
 	communicateOffsetandSize(offsetWindow, innerWindow, innerRelation, innerHistogram, offsetAndSize);
-	MPI_Barrier(MPI_COMM_WORLD); //Testing..
+	MPI_Barrier(MPI_COMM_WORLD); 
 
+#if 0
 	offsetandsizes_t * read_data = (offsetandsizes_t *)offsetWindow->data;
 
 	for (uint32_t p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
 	{
-		printf(" Node =%d, partitionID=%d, Assigned=%d, Inner offset=%d, size=%d Outer offset=%d, size=%d\n", this->nodeId, p, this->assignment[p], read_data[p].partitionOffsetInner, read_data[p].partitionSizeInner, read_data[p].partitionOffsetOuter, read_data[p].partitionSizeOuter);
+		printf(" Node =%d, partitionID=%d, Assigned=%d, Inner offset=%d, size=%d Outer offset=%d, size=%d\n", this->nodeId, p, this->assignment[p],
+				read_data[p].partitionOffsetInner, read_data[p].partitionSizeInner, read_data[p].partitionOffsetOuter, read_data[p].partitionSizeOuter);
 	}
 	printf("Communication DONE \n");
 	return;
+#endif
 
+	readAndBuild(offsetWindow, innerWindow);
+	arrangeProbeRelation(offsetWindow, outerWindow, outerRelation);
+	printf("Communication DONE \n");
+	return;
 	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning inner relation", this->nodeId);
 	partition(innerRelation, innerWindow);
 
@@ -89,11 +99,106 @@ void NetworkPartitioning::execute() {
 
 }
 
+//Arrange probe realtion data in the window for the other processes to read from.
+void NetworkPartitioning::arrangeProbeRelation(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Relation *relation)
+{
+	uint64_t const numberOfElements = relation->getLocalSize();
+	hpcjoin::data::Tuple * const data = relation->getData();
+	uint64_t const partitionCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT;
+	const uint32_t partitionBits = hpcjoin::core::Configuration::NETWORK_PARTITIONING_FANOUT;
+	cacheline_t inCacheBuffer[hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT] __attribute__((aligned(NETWORK_PARTITIONING_CACHELINE_SIZE)));;
+
+	JOIN_DEBUG("Network Partitioning", "Node %d is setting counter to zero", this->nodeId);
+
+	for (uint64_t p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
+	{
+		inCacheBuffer[p].data.inCacheCounter = 0;
+		inCacheBuffer[p].data.memoryCounter = 0;
+	}
+
+	for (uint64_t i = 0; i < numberOfElements; ++i) 
+	{
+		uint32_t partitionId = HASH_BIT_MODULO(data[i].key, hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT - 1, 0);
+
+		uint32_t inCacheCounter = inCacheBuffer[partitionId].data.inCacheCounter;
+		uint32_t memoryCounter = inCacheBuffer[partitionId].data.memoryCounter;
+
+		hpcjoin::data::CompressedTuple *cacheLine = (hpcjoin::data::CompressedTuple *) (inCacheBuffer + partitionId);
+		//cacheLine[inCacheCounter] = data[i];
+		cacheLine[inCacheCounter].value = data[i].rid + ((data[i].key >> partitionBits) << (partitionBits + hpcjoin::core::Configuration::PAYLOAD_BITS));
+		++inCacheCounter;
+
+		// Check if cache line is full
+		if (inCacheCounter == TUPLES_PER_CACHELINE) 
+		{
+			// Move cache line to memory buffer
+			char *inMemoryStreamDestination = (((char *) outerWindow->data) + (offsetAndSize[partitionId].partitionOffsetOuter)) + (memoryCounter * NETWORK_PARTITIONING_CACHELINE_SIZE);
+			memcpy(inMemoryStreamDestination, cacheLine, NETWORK_PARTITIONING_CACHELINE_SIZE);
+
+			++memoryCounter;
+			inCacheCounter = 0;
+		}
+
+		inCacheBuffer[partitionId].data.inCacheCounter = inCacheCounter;
+		inCacheBuffer[partitionId].data.memoryCounter = memoryCounter;
+
+	}
+}
+
+void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow)
+{
+	innerWindow->start();
+
+	uint32_t i = 0;
+	uint64_t sum = 0;
+	uint64_t max = 0;
+	// TODO: add the logic to process multi partitions
+	uint32_t assignedCount = 0; // For multiple partitions
+
+	MPI_Request req[2];
+
+	//TODO: Type of the Offset window should not be compressed tuple type.
+	//Calculate the Max and sum of the total read size of Build relation data.
+	offsetandsizes_t *assignedPartition = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*assignedCount;
+	for (uint32_t n = 0; n < this->numberOfNodes; ++n)
+	{
+		sum += assignedPartition[n].partitionSizeInner;
+		if (max < assignedPartition[n].partitionSizeInner)
+		{
+			max = assignedPartition[n].partitionSizeInner;
+		}
+	}
+	
+	//create the buffer of maximum read size
+	hpcjoin::data::CompressedTuple * readBuffer[2];
+	readBuffer[0] = (hpcjoin::data::CompressedTuple *)calloc(sum, sizeof(hpcjoin::data::CompressedTuple));
+	readBuffer[1] = (hpcjoin::data::CompressedTuple *)calloc(sum, sizeof(hpcjoin::data::CompressedTuple));
+
+	hpcjoin::tasks::BuildProbe *buildProbe = new hpcjoin::tasks::BuildProbe(sum);
+	
+	offsetandsizes_t * offsetAndSize = (offsetandsizes_t *)offsetWindow->data;
+	MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+			offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
+			MPI_CHAR, *innerWindow->window, &req[i%2]);
+	for (i = 1; i < this->numberOfNodes; ++i) 
+	{
+		MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+				offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
+				MPI_CHAR, *innerWindow->window, &req[i%2]);
+		MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
+		buildProbe->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
+	}
+
+	TASK_QUEUE.push(buildProbe);
+	innerWindow->flush();
+	innerWindow->stop();
+}
+
+
 void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation,
 		uint64_t* innerHistogram, offsetandsizes_t* offsetAndSize) 
 {
 
-#if 1
 	offsetWindow->start();
 
 	uint64_t p;
@@ -105,8 +210,6 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 	cacheline_t inCacheBuffer[hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT] __attribute__((aligned(NETWORK_PARTITIONING_CACHELINE_SIZE)));;
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is setting counter to zero", this->nodeId);
-
-	uint64_t partitonsPerProcessor = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
 
 	for (p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
 	{
@@ -160,7 +263,6 @@ void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offset
 	}
 	offsetWindow->flush();
 	offsetWindow->stop();
-#endif
 }
 
 

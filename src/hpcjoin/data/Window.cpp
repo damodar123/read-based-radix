@@ -170,6 +170,19 @@ uint64_t Window::getPartitionSize(uint32_t partitionId) {
 
 }
 
+#if 0
+//TODO: combine the Sum and max in the same function and return a structure
+//TODO: Type of the Offset window should not be compressed tuple type.
+uint64_t Window::computeWindowSum(uint32_t assignedCount)
+{
+	uint64_t sum = 0;
+	uint64_t *startOfPartition = this->data + this->numberOfNodes*4*sizeof(uint64_t);
+	for (uint32_t n = 0; n < this->numberOfNodes; ++n) {
+		if (this->assignment[p] == nodeId) {
+			sum += this->globalHistogram[p];
+}
+#endif
+
 uint64_t Window::computeLocalWindowSize() {
 
 	return computeWindowSize(this->nodeId);

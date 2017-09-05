@@ -116,6 +116,7 @@ void HashJoin::join() {
 	MPI_Barrier(MPI_COMM_WORLD);
 	return;
 
+#if 0
 	// OPTIMIZATION Save memory as soon as possible
 	//delete this->innerRelation;
 	//delete this->outerRelation;
@@ -198,16 +199,16 @@ void HashJoin::join() {
 	hpcjoin::performance::Measurements::stopLocalProcessing();
 
 	JOIN_MEM_DEBUG("Local phase completed");
-
+#endif
 	/**********************************************************************/
 
 	hpcjoin::performance::Measurements::stopJoin();
 
 	// OPTIMIZATION (see above)
-	if (!windowsDeleted) {
+	//if (!windowsDeleted) {
 		delete innerWindow;
 		delete outerWindow;
-	}
+	//}
 
 }
 
