@@ -38,6 +38,7 @@ protected:
 	uint32_t keyShift;
 	uint32_t shiftBits;
 	uint64_t MASK;
+	uint64_t nextIndex;
 
 };
 

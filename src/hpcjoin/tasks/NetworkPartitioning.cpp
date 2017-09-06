@@ -145,55 +145,157 @@ void NetworkPartitioning::arrangeProbeRelation(hpcjoin::data::Window *offsetWind
 	}
 }
 
+#if 1 
+//with MPI_Rget ====
 void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow)
 {
+	printf("Node=%d start readAndBuild\n", this->nodeId);
 	innerWindow->start();
 
-	uint32_t i = 0;
-	uint64_t sum = 0;
+	uint64_t *sum;
 	uint64_t max = 0;
-	// TODO: add the logic to process multi partitions
-	uint32_t assignedCount = 0; // For multiple partitions
-
-	MPI_Request req[2];
-
-	//TODO: Type of the Offset window should not be compressed tuple type.
-	//Calculate the Max and sum of the total read size of Build relation data.
-	offsetandsizes_t *assignedPartition = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*assignedCount;
-	for (uint32_t n = 0; n < this->numberOfNodes; ++n)
+	uint32_t assignedCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
+	//Imbalance of assigned partitions.
+	if(this->nodeId < (hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT - this->numberOfNodes*assignedCount))
 	{
-		sum += assignedPartition[n].partitionSizeInner;
-		if (max < assignedPartition[n].partitionSizeInner)
+		assignedCount++;
+	}
+	hpcjoin::tasks::BuildProbe *buildProbeArray[assignedCount];
+	sum = (uint64_t *)calloc(assignedCount, sizeof(uint64_t));
+	for (uint32_t a = 0; a < assignedCount; ++a)
+	{
+		offsetandsizes_t *assignedPartition = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
+		for (uint32_t n = 0; n < this->numberOfNodes; ++n)
 		{
-			max = assignedPartition[n].partitionSizeInner;
+			sum[a] += assignedPartition[n].partitionSizeInner;
+			if (max < assignedPartition[n].partitionSizeInner)
+			{
+				max = assignedPartition[n].partitionSizeInner;
+			}
 		}
 	}
-	
+	printf("Node=%d, AssignedCount=%d \n", this->nodeId, assignedCount);
+	//Increase the request size and use MPI_Waitany to wait on the array.
+	MPI_Request req[2] = { MPI_REQUEST_NULL };
 	//create the buffer of maximum read size
 	hpcjoin::data::CompressedTuple * readBuffer[2];
-	readBuffer[0] = (hpcjoin::data::CompressedTuple *)calloc(sum, sizeof(hpcjoin::data::CompressedTuple));
-	readBuffer[1] = (hpcjoin::data::CompressedTuple *)calloc(sum, sizeof(hpcjoin::data::CompressedTuple));
+	readBuffer[0] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+	readBuffer[1] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
 
-	hpcjoin::tasks::BuildProbe *buildProbe = new hpcjoin::tasks::BuildProbe(sum);
-	
-	offsetandsizes_t * offsetAndSize = (offsetandsizes_t *)offsetWindow->data;
-	MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
-			offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
-			MPI_CHAR, *innerWindow->window, &req[i%2]);
-	for (i = 1; i < this->numberOfNodes; ++i) 
+	for(uint32_t a = 0; a < assignedCount; ++a)
 	{
+		uint32_t i = 0;
+
+		printf("Node=%d, assignement=%d, max= %d, sum=%d\n", this->nodeId, a, max, sum[a]);
+
+		printf("Node=%d - assignemnt=%d, create the BP Object\n", this->nodeId, a);
+		buildProbeArray[a] = new hpcjoin::tasks::BuildProbe(sum[a]);
+		
+		printf("Node=%d - assignemnt=%d, point to the offset and size \n", this->nodeId, a);
+		offsetandsizes_t *offsetAndSize = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
+		if(this->nodeId == 0)
+			printf("Read %d tuples from offset %d of target %d\n", offsetAndSize[i].partitionSizeInner, offsetAndSize[i].partitionOffsetInner, i);
 		MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
 				offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
 				MPI_CHAR, *innerWindow->window, &req[i%2]);
+		for (i = 1; i < this->numberOfNodes; ++i) 
+		{
+			if(this->nodeId == 0)
+				printf("Read %d tuples from offset %d of target %d\n", offsetAndSize[i].partitionSizeInner, offsetAndSize[i].partitionOffsetInner, i);
+			MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+					offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
+					MPI_CHAR, *innerWindow->window, &req[i%2]);
+			if(this->nodeId == 0)
+			printf("Wait for %d tuples from offset %d of target %d\n", offsetAndSize[i-1].partitionSizeInner, offsetAndSize[i-1].partitionOffsetInner, i-1);
+			MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
+			buildProbeArray[a]->buildHT(this->nodeId, offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
+		}
+		printf("Node=%d, assignment=%d, before Final wait sizeHT= %d\n", this->nodeId, a, offsetAndSize[i-1].partitionSizeInner);
+		if(this->nodeId == 0)
+			printf("Wait for %d tuples from offset %d of target %d\n", offsetAndSize[i-1].partitionSizeInner, offsetAndSize[i-1].partitionOffsetInner, i-1);
 		MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-		buildProbe->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
-	}
 
-	TASK_QUEUE.push(buildProbe);
+		printf("Node=%d, assignment=%d, after Final wait sizeHT= %d\n", this->nodeId, a, offsetAndSize[i-1].partitionSizeInner);
+		buildProbeArray[a]->buildHT(this->nodeId, offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
+
+		TASK_QUEUE.push(buildProbeArray[a]);
+		printf("Node=%d, assignment=%d DONE \n", this->nodeId, a);
+	}
+	free(sum);
+	free(readBuffer[1]);
+	free(readBuffer[0]);
+
+	innerWindow->flush();
+	innerWindow->stop();
+}
+#endif
+
+
+#if 0
+void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow)
+{
+	printf("Node=%d start readAndBuild\n", this->nodeId);
+	innerWindow->start();
+
+	uint64_t *sum;
+	uint64_t max = 0;
+	uint32_t assignedCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
+	//Imbalance of assigned partitions.
+	if(this->nodeId < (hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT - this->numberOfNodes*assignedCount))
+	{
+		assignedCount++;
+	}
+	hpcjoin::tasks::BuildProbe *buildProbeArray[assignedCount];
+	sum = (uint64_t *)calloc(assignedCount, sizeof(uint64_t));
+	for (uint32_t a = 0; a < assignedCount; ++a)
+	{
+		//TODO: Type of the Offset window should not be compressed tuple type.
+		offsetandsizes_t *assignedPartition = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
+		for (uint32_t n = 0; n < this->numberOfNodes; ++n)
+		{
+			sum[a] += assignedPartition[n].partitionSizeInner;
+			if (max < assignedPartition[n].partitionSizeInner)
+			{
+				max = assignedPartition[n].partitionSizeInner;
+			}
+		}
+	}
+	printf("Node=%d, AssignedCount=%d \n", this->nodeId, assignedCount);
+	//Increase the request size and use MPI_Waitany to wait on the array.
+	MPI_Request req =  MPI_REQUEST_NULL;
+	//create the buffer of maximum read size
+	hpcjoin::data::CompressedTuple * readBuffer =  (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+
+	for(uint32_t a = 0; a < assignedCount; ++a)
+	{
+		uint32_t i = 0;
+		printf("Node=%d, assignement=%d, max= %d, sum=%d\n", this->nodeId, a, max, sum[a]);
+
+		buildProbeArray[a] = new hpcjoin::tasks::BuildProbe(sum[a]);
+		
+		printf("Node=%d - assignemnt=%d, point to the offset and size \n", this->nodeId, a);
+		offsetandsizes_t *offsetAndSize = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
+		for (i = 0; i < this->numberOfNodes; ++i) 
+		{
+			MPI_Rget(readBuffer, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+					offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
+					MPI_CHAR, *innerWindow->window, &req);
+			MPI_Wait(&req,MPI_STATUS_IGNORE);
+			buildProbeArray[a]->buildHT(this->nodeId, offsetAndSize[i-1].partitionSizeInner, readBuffer);
+		}
+		printf("Node=%d, assignment=%d, before Final wait sizeHT= %d\n", this->nodeId, a, offsetAndSize[i-1].partitionSizeInner);
+
+		TASK_QUEUE.push(buildProbeArray[a]);
+		printf("Node=%d, assignment=%d DONE \n", this->nodeId, a);
+	}
+	free(sum);
+	free(readBuffer);
+
 	innerWindow->flush();
 	innerWindow->stop();
 }
 
+#endif
 
 void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation,
 		uint64_t* innerHistogram, offsetandsizes_t* offsetAndSize) 
