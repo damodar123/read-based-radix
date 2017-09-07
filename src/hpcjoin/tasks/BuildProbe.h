@@ -27,10 +27,11 @@ public:
 	void execute();
 	task_type_t getType();
 	void buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple *innerPart);
-	//void probeHT();
+	void probeHT(uint64_t outerPartSize, hpcjoin::data::CompressedTuple *outerPart);
 
 protected:
 
+	hpcjoin::data::CompressedTuple *innerPartition;
 	uint64_t innerPartitionSize;
 	uint64_t *hashTableNext;
 	uint64_t *hashTableBucket;

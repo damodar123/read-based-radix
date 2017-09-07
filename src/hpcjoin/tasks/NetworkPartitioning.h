@@ -9,6 +9,7 @@
 
 #include <queue>
 #include <hpcjoin/tasks/Task.h>
+#include <hpcjoin/tasks/BuildProbe.h>
 #include <hpcjoin/data/Window.h>
 #include <hpcjoin/data/Relation.h>
 #include <hpcjoin/histograms/OffsetMap.h>
@@ -30,7 +31,7 @@ public:
 
 	void execute();
 	task_type_t getType();
-	static std::queue<hpcjoin::tasks::Task *> TASK_QUEUE;
+	static std::queue<hpcjoin::tasks::BuildProbe *> TASK_QUEUE;
 
 protected:
 
@@ -40,6 +41,7 @@ protected:
 
 	void readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow);
 	void arrangeProbeRelation(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Relation *relation);
+	void readAndProbe(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow);
 
 protected:
 

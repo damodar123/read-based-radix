@@ -12,7 +12,6 @@
 
 #include <hpcjoin/core/Configuration.h>
 #include <hpcjoin/data/CompressedTuple.h>
-#include <hpcjoin/tasks/BuildProbe.h>
 #include <hpcjoin/utils/Debug.h>
 #include <hpcjoin/performance/Measurements.h>
 
@@ -26,7 +25,7 @@
 namespace hpcjoin {
 namespace tasks {
 
-std::queue<hpcjoin::tasks::Task *> NetworkPartitioning::TASK_QUEUE;
+std::queue<hpcjoin::tasks::BuildProbe *> NetworkPartitioning::TASK_QUEUE;
 
 typedef union {
 
@@ -89,6 +88,7 @@ void NetworkPartitioning::execute() {
 
 	readAndBuild(offsetWindow, innerWindow);
 	arrangeProbeRelation(offsetWindow, outerWindow, outerRelation);
+	readAndProbe(offsetWindow, outerWindow);
 	printf("Communication DONE \n");
 	return;
 	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning inner relation", this->nodeId);
@@ -97,6 +97,30 @@ void NetworkPartitioning::execute() {
 	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning outer relation", this->nodeId);
 	partition(outerRelation, outerWindow);
 
+}
+
+//Probe into the hash table
+void NetworkPartitioning::readAndProbe(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow)
+{
+	while (TASK_QUEUE.size() > 0) {
+
+		hpcjoin::tasks::Task *task = TASK_QUEUE.front();
+		TASK_QUEUE.pop();
+#if 0
+		// OPTIMIZATION When second partitioning pass is completed, windows are no longer required
+		if (hpcjoin::core::Configuration::ENABLE_TWO_LEVEL_PARTITIONING && windowsDeleted) {
+			if (task->getType() == TASK_BUILD_PROBE) {
+				delete innerWindow;
+				delete outerWindow;
+				windowsDeleted = true;
+			}
+		}
+#endif
+
+		task->execute();
+		delete task;
+
+	}
 }
 
 //Arrange probe realtion data in the window for the other processes to read from.
@@ -149,7 +173,6 @@ void NetworkPartitioning::arrangeProbeRelation(hpcjoin::data::Window *offsetWind
 //with MPI_Rget ====
 void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow)
 {
-	printf("Node=%d start readAndBuild\n", this->nodeId);
 	innerWindow->start();
 
 	uint64_t *sum;
@@ -187,36 +210,22 @@ void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcj
 		uint32_t i = 0;
 
 		printf("Node=%d, assignement=%d, max= %d, sum=%d\n", this->nodeId, a, max, sum[a]);
-
-		printf("Node=%d - assignemnt=%d, create the BP Object\n", this->nodeId, a);
 		buildProbeArray[a] = new hpcjoin::tasks::BuildProbe(sum[a]);
 		
-		printf("Node=%d - assignemnt=%d, point to the offset and size \n", this->nodeId, a);
 		offsetandsizes_t *offsetAndSize = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
-		if(this->nodeId == 0)
-			printf("Read %d tuples from offset %d of target %d\n", offsetAndSize[i].partitionSizeInner, offsetAndSize[i].partitionOffsetInner, i);
 		MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
 				offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
 				MPI_CHAR, *innerWindow->window, &req[i%2]);
 		for (i = 1; i < this->numberOfNodes; ++i) 
 		{
-			if(this->nodeId == 0)
-				printf("Read %d tuples from offset %d of target %d\n", offsetAndSize[i].partitionSizeInner, offsetAndSize[i].partitionOffsetInner, i);
 			MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
 					offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
 					MPI_CHAR, *innerWindow->window, &req[i%2]);
-			if(this->nodeId == 0)
-			printf("Wait for %d tuples from offset %d of target %d\n", offsetAndSize[i-1].partitionSizeInner, offsetAndSize[i-1].partitionOffsetInner, i-1);
 			MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-			buildProbeArray[a]->buildHT(this->nodeId, offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
+			buildProbeArray[a]->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
 		}
-		printf("Node=%d, assignment=%d, before Final wait sizeHT= %d\n", this->nodeId, a, offsetAndSize[i-1].partitionSizeInner);
-		if(this->nodeId == 0)
-			printf("Wait for %d tuples from offset %d of target %d\n", offsetAndSize[i-1].partitionSizeInner, offsetAndSize[i-1].partitionOffsetInner, i-1);
 		MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-
-		printf("Node=%d, assignment=%d, after Final wait sizeHT= %d\n", this->nodeId, a, offsetAndSize[i-1].partitionSizeInner);
-		buildProbeArray[a]->buildHT(this->nodeId, offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
+		buildProbeArray[a]->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
 
 		TASK_QUEUE.push(buildProbeArray[a]);
 		printf("Node=%d, assignment=%d DONE \n", this->nodeId, a);

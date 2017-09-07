@@ -7,6 +7,7 @@
 #include "BuildProbe.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include <hpcjoin/operators/HashJoin.h>
 #include <hpcjoin/core/Configuration.h>
@@ -32,6 +33,8 @@ namespace tasks {
 BuildProbe::BuildProbe(uint64_t innerPartitionSize) {
 
 	this->innerPartitionSize = innerPartitionSize;
+	this->innerPartition = (hpcjoin::data::CompressedTuple *)calloc(innerPartitionSize, sizeof(hpcjoin::data::CompressedTuple));
+
 	this->keyShift = hpcjoin::core::Configuration::NETWORK_PARTITIONING_FANOUT + hpcjoin::core::Configuration::PAYLOAD_BITS;
 	this->shiftBits =  this->keyShift + hpcjoin::core::Configuration::LOCAL_PARTITIONING_FANOUT;
 	uint64_t N = innerPartitionSize;
@@ -53,12 +56,42 @@ BuildProbe::~BuildProbe() {
 void BuildProbe::execute() {
 }
 
+void BuildProbe::probeHT(uint64_t outerPartSize, hpcjoin::data::CompressedTuple *outerPart) {
+
+#ifdef MEASUREMENT_DETAILS_LOCALBP
+	hpcjoin::performance::Measurements::startBuildProbeProbe();
+#endif
+
+	JOIN_DEBUG("Build-Probe", "Probing Hash table of size %lu", outerPartSize);
+
+	uint64_t matches = 0;
+	for (uint64_t t=0; t<outerPartSize; ++t) {
+		uint64_t idx = HASH_BIT_MODULO(outerPart[t].value, this->MASK, this->shiftBits);
+		for(uint64_t hit = this->hashTableBucket[idx]; hit > 0; hit = this->hashTableNext[hit-1]){
+			if((outerPart[t].value >> this->keyShift) == (this->innerPartition[hit-1].value >> this->keyShift)){
+				++matches;
+			}
+		}
+	}
+
+#ifdef MEASUREMENT_DETAILS_LOCALBP
+	hpcjoin::performance::Measurements::stopBuildProbeProbe(outerPartSize);
+#endif
+
+	hpcjoin::operators::HashJoin::RESULT_COUNTER += matches;
+	printf("OuterPart = %d, Result matches =%d, overall matches = %d\n", outerPartSize, matches, hpcjoin::operators::HashJoin::RESULT_COUNTER);
+}
+
 void BuildProbe::buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple *innerPart) {
 
 #ifdef MEASUREMENT_DETAILS_LOCALBP
 	hpcjoin::performance::Measurements::startBuildProbeBuild();
 #endif
 	JOIN_DEBUG("Build-Probe", "Building Hash table of size %lu", innerPartSize);
+
+	//TODO: cross check the offset
+	printf("writing at offset %p\n", this->innerPartition + this->nextIndex);
+	memcpy(this->innerPartition + this->nextIndex, innerPart, innerPartSize);
 
 	for (uint64_t t=0; t<innerPartSize; ++t) {
 		uint64_t idx = HASH_BIT_MODULO(innerPart[t].value, this->MASK, this->shiftBits);

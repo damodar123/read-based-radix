@@ -133,7 +133,6 @@ int main(int argc, char *argv[]) {
 	JOIN_MEM_DEBUG("Join Start");
 	hashJoin->join();
 	JOIN_MEM_DEBUG("Join Stop");
-/*
 	JOIN_DEBUG("Main", "Node %d finished join", nodeId);
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -148,7 +147,6 @@ int main(int argc, char *argv[]) {
 			hpcjoin::core::Configuration::NETWORK_PARTITIONING_FANOUT, hpcjoin::core::Configuration::LOCAL_PARTITIONING_FANOUT );
 	}
 	hpcjoin::performance::Measurements::storeAllMeasurements();
-*/
 	delete hashJoin;
 	// OPTIMIZATION innerRelation deleted during join
 	// OPTIMIZATION outerRelation deleted during join
