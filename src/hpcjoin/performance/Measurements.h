@@ -118,16 +118,16 @@ protected:
 
 public:
 
-	static void startNetworkPartitioningMemoryAllocation();
-	static void stopNetworkPartitioningMemoryAllocation(uint64_t bufferSize);
+	static void startNetworkPartitioningOffsetComm();
+	static void stopNetworkPartitioningOffsetComm();
 	static void startNetworkPartitioningMainPartitioning();
-	static void stopNetworkPartitioningMainPartitioning(uint64_t numberOfElemenets);
+	static void stopNetworkPartitioningMainPartitioning();
 	static void startNetworkPartitioningFlushPartitioning();
 	static void stopNetworkPartitioningFlushPartitioning();
 	static void startNetworkPartitioningWindowPut();
 	static void stopNetworkPartitioningWindowPut();
 	static void startNetworkPartitioningWindowWait();
-	static void stopNetworkPartitioningWindowWait();
+	static void stopNetworkPartitioningWindowWait(uint32_t id);
 	static void storeNetworkPartitioningData();
 
 protected:
@@ -152,7 +152,7 @@ protected:
 	static uint64_t networkPartitioningWindowPutCount;
 	static uint64_t networkPartitioningWindowPutTimeSum;
 	static uint64_t networkPartitioningWindowWaitCount;
-	static uint64_t networkPartitioningWindowWaitTimeSum;
+	static uint64_t networkPartitioningWindowWaitTimeSum[2];
 
 	/**
 	 * Specific counters for local partitioning

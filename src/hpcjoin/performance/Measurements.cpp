@@ -272,13 +272,13 @@ uint64_t Measurements::networkPartitioningWindowPutCount = 0;
 uint64_t Measurements::networkPartitioningWindowPutTimeSum = 0;
 
 uint64_t Measurements::networkPartitioningWindowWaitCount = 0;
-uint64_t Measurements::networkPartitioningWindowWaitTimeSum = 0;
+uint64_t Measurements::networkPartitioningWindowWaitTimeSum[2];
 
-void Measurements::startNetworkPartitioningMemoryAllocation() {
+void Measurements::startNetworkPartitioningOffsetComm() {
 	gettimeofday(&networkPartitioningMemoryAllocationStart, NULL);
 }
 
-void Measurements::stopNetworkPartitioningMemoryAllocation(uint64_t numberOfElemenets) {
+void Measurements::stopNetworkPartitioningOffsetComm() {
 	gettimeofday(&networkPartitioningMemoryAllocationStop, NULL);
 	uint64_t time = timeDiff(networkPartitioningMemoryAllocationStop, networkPartitioningMemoryAllocationStart);
 
@@ -291,7 +291,7 @@ void Measurements::startNetworkPartitioningMainPartitioning() {
 	gettimeofday(&networkPartitioningMainPartitioningStart, NULL);
 }
 
-void Measurements::stopNetworkPartitioningMainPartitioning(uint64_t numberOfElemenets) {
+void Measurements::stopNetworkPartitioningMainPartitioning() {
 	gettimeofday(&networkPartitioningMainPartitioningStop, NULL);
 	uint64_t time = timeDiff(networkPartitioningMainPartitioningStop, networkPartitioningMainPartitioningStart);
 
@@ -328,10 +328,11 @@ void Measurements::startNetworkPartitioningWindowWait() {
 	gettimeofday(&networkPartitioningWindowWaitStart, NULL);
 }
 
-void Measurements::stopNetworkPartitioningWindowWait() {
+void Measurements::stopNetworkPartitioningWindowWait(uint32_t id) {
 	gettimeofday(&networkPartitioningWindowWaitStop, NULL);
 	uint64_t time = timeDiff(networkPartitioningWindowWaitStop, networkPartitioningWindowWaitStart);
-	networkPartitioningWindowWaitTimeSum += time;
+	JOIN_ASSERT(id < 2, "Performance", "Index out of bounds");
+	networkPartitioningWindowWaitTimeSum[id] += time;
 	++networkPartitioningWindowWaitCount;
 }
 
@@ -344,7 +345,8 @@ void Measurements::storeNetworkPartitioningData() {
 	fprintf(performanceOutputFile, "MOFLUSHPART\t%lu\tus\n", networkPartitioningFlushPartitioningTimes[1]);
 	fprintf(performanceOutputFile, "MWINPUT\t%lu\tus\n", networkPartitioningWindowPutTimeSum);
 	fprintf(performanceOutputFile, "MWINPUTCNT\t%lu\tcalls\n", networkPartitioningWindowPutCount);
-	fprintf(performanceOutputFile, "MWINWAIT\t%lu\tus\n", networkPartitioningWindowWaitTimeSum);
+	fprintf(performanceOutputFile, "MWINWAITBUILD\t%lu\tus\n", networkPartitioningWindowWaitTimeSum[0]);
+	fprintf(performanceOutputFile, "MWINWAITPROBE\t%lu\tus\n", networkPartitioningWindowWaitTimeSum[1]);
 	fprintf(performanceOutputFile, "MWINWAITCNT\t%lu\tcalls\n", networkPartitioningWindowWaitCount);
 }
 

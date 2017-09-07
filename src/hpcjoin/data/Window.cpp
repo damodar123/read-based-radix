@@ -102,6 +102,7 @@ void Window::stop() {
 
 }
 
+#if 0
 void Window::write(uint32_t partitionId, CompressedTuple* tuples, uint64_t sizeInTuples, bool flush) {
 
 	//JOIN_DEBUG("Window", "Initializing write for partition %d of %lu tuples", partitionId, sizeInTuples);
@@ -153,6 +154,7 @@ void Window::write(uint32_t partitionId, CompressedTuple* tuples, uint64_t sizeI
 	}
 
 }
+#endif
 
 CompressedTuple* Window::getPartition(uint32_t partitionId) {
 
