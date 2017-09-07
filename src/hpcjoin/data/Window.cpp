@@ -63,7 +63,7 @@ Window::Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t* assignment, ui
 		#endif
 	}
 
-	printf("isOffsetWindow = %d, Window is at address %p to %p", this->isOffsetWindow, this->data, this->data + localWindowSize);
+	//printf("isOffsetWindow = %d, Window is at address %p to %p", this->isOffsetWindow, this->data, this->data + localWindowSize);
 	JOIN_DEBUG("Window", "Window is at address %p to %p", this->data, this->data + localWindowSize);
 
 }

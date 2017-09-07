@@ -112,10 +112,6 @@ void HashJoin::join() {
 	hpcjoin::performance::Measurements::stopNetworkPartitioning();
 	JOIN_MEM_DEBUG("Network phase completed");
 
-	printf("Dhamu Network phase completed\n");
-	MPI_Barrier(MPI_COMM_WORLD);
-	return;
-
 #if 0
 	// OPTIMIZATION Save memory as soon as possible
 	//delete this->innerRelation;
@@ -206,6 +202,7 @@ void HashJoin::join() {
 
 	// OPTIMIZATION (see above)
 	//if (!windowsDeleted) {
+		delete offsetWindow;
 		delete innerWindow;
 		delete outerWindow;
 	//}

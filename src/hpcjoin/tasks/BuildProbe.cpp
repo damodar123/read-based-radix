@@ -79,7 +79,6 @@ void BuildProbe::probeHT(uint64_t outerPartSize, hpcjoin::data::CompressedTuple 
 #endif
 
 	hpcjoin::operators::HashJoin::RESULT_COUNTER += matches;
-	printf("OuterPart = %d, Result matches =%d, overall matches = %d\n", outerPartSize, matches, hpcjoin::operators::HashJoin::RESULT_COUNTER);
 }
 
 void BuildProbe::buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple *innerPart) {
@@ -90,7 +89,6 @@ void BuildProbe::buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple 
 	JOIN_DEBUG("Build-Probe", "Building Hash table of size %lu", innerPartSize);
 
 	//TODO: cross check the offset
-	printf("writing at offset %p\n", this->innerPartition + this->nextIndex);
 	memcpy(this->innerPartition + this->nextIndex, innerPart, innerPartSize);
 
 	for (uint64_t t=0; t<innerPartSize; ++t) {
