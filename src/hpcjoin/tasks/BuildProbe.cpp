@@ -102,34 +102,6 @@ void BuildProbe::buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple 
 #endif
 }
 
-#if 0
-void BuildProbe::probeHT() {
-
-	JOIN_DEBUG("Build-Probe", "Building Hash table of size %lu", outerPartitionSize);
-	// Probe hash table
-
-#ifdef MEASUREMENT_DETAILS_LOCALBP
-	hpcjoin::performance::Measurements::startBuildProbeProbe();
-#endif
-
-	uint64_t matches = 0;
-	for (uint64_t t=0; t<this->outerPartitionSize; ++t) {
-		uint64_t idx = HASH_BIT_MODULO(outerPartition[t].value, MASK, shiftBits);
-		for(uint64_t hit = hashTableBucket[idx]; hit > 0; hit = hashTableNext[hit-1]){
-			if((outerPartition[t].value >> keyShift) == (innerPartition[hit-1].value >> keyShift)){
-				++matches;
-			}
-		}
-	}
-
-#ifdef MEASUREMENT_DETAILS_LOCALBP
-	hpcjoin::performance::Measurements::stopBuildProbeProbe(this->outerPartitionSize);
-#endif
-
-	hpcjoin::operators::HashJoin::RESULT_COUNTER += matches;
-}
-#endif
-
 task_type_t BuildProbe::getType() {
 	return TASK_BUILD_PROBE;
 }

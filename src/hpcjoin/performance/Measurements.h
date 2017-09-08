@@ -48,6 +48,8 @@ protected:
 	static uint64_t totalCycles;
 	static uint64_t totalTime;
 	static uint64_t phaseTimes[3];
+	static uint64_t arrangeprobe;
+	static uint64_t offsetcommwait;
 
 	/**
 	 * Timing for synchronization and preparations
@@ -120,6 +122,10 @@ public:
 
 	static void startNetworkPartitioningOffsetComm();
 	static void stopNetworkPartitioningOffsetComm();
+	static void startNetworkPartitioningOffsetCommWait(); 
+	static void stopNetworkPartitioningOffsetCommWait(); 
+	static void startNetworkPartitioningArrangeProbeData(); 
+	static void stopNetworkPartitioningArrangeProbeData(); 
 	static void startNetworkPartitioningMainPartitioning();
 	static void stopNetworkPartitioningMainPartitioning();
 	static void startNetworkPartitioningFlushPartitioning();
@@ -138,6 +144,10 @@ protected:
 	static struct timeval networkPartitioningMainPartitioningStop;
 	static struct timeval networkPartitioningFlushPartitioningStart;
 	static struct timeval networkPartitioningFlushPartitioningStop;
+	static struct timeval networkPartitioningOffsetCommWaitStart;
+	static struct timeval networkPartitioningOffsetCommWaitStop;
+	static struct timeval networkPartitioningArrangeProbeStart;
+	static struct timeval networkPartitioningArrangeProbeStop;
 	static struct timeval networkPartitioningWindowPutStart;
 	static struct timeval networkPartitioningWindowPutStop;
 	static struct timeval networkPartitioningWindowWaitStart;
@@ -151,7 +161,7 @@ protected:
 	static uint64_t networkPartitioningFlushPartitioningTimes[2];
 	static uint64_t networkPartitioningWindowPutCount;
 	static uint64_t networkPartitioningWindowPutTimeSum;
-	static uint64_t networkPartitioningWindowWaitCount;
+	static uint64_t networkPartitioningWindowWaitCount[2];
 	static uint64_t networkPartitioningWindowWaitTimeSum[2];
 
 	/**

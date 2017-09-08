@@ -36,7 +36,7 @@ public:
 protected:
 
 	void partition(hpcjoin::data::Relation *relation, hpcjoin::data::Window *window);
-	void communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation, uint64_t* innerHistogram,
+	void offsetCommAndArrangeBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation, uint64_t* innerHistogram,
 			offsetandsizes_t* offsetAndSize);
 
 	void readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow);

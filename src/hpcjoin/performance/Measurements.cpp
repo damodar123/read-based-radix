@@ -47,6 +47,10 @@ struct timeval hpcjoin::performance::Measurements::histogramOffsetComputationSto
 
 struct timeval hpcjoin::performance::Measurements::networkPartitioningMemoryAllocationStart;
 struct timeval hpcjoin::performance::Measurements::networkPartitioningMemoryAllocationStop;
+struct timeval hpcjoin::performance::Measurements::networkPartitioningArrangeProbeStart;
+struct timeval hpcjoin::performance::Measurements::networkPartitioningOffsetCommWaitStart;
+struct timeval hpcjoin::performance::Measurements::networkPartitioningOffsetCommWaitStop;
+struct timeval hpcjoin::performance::Measurements::networkPartitioningArrangeProbeStop;
 struct timeval hpcjoin::performance::Measurements::networkPartitioningMainPartitioningStart;
 struct timeval hpcjoin::performance::Measurements::networkPartitioningMainPartitioningStop;
 struct timeval hpcjoin::performance::Measurements::networkPartitioningFlushPartitioningStart;
@@ -86,6 +90,8 @@ namespace performance {
 uint64_t Measurements::totalCycles;
 uint64_t Measurements::totalTime;
 uint64_t Measurements::phaseTimes[3];
+uint64_t Measurements::arrangeprobe;
+uint64_t Measurements::offsetcommwait;
 
 void Measurements::startJoin() {
 	gettimeofday(&joinStart, NULL);
@@ -139,6 +145,8 @@ void Measurements::storePhaseData() {
 	fprintf(performanceOutputFile, "JHIST\t%lu\tus\n", phaseTimes[0]);
 	fprintf(performanceOutputFile, "JMPI\t%lu\tus\n", phaseTimes[1]);
 	fprintf(performanceOutputFile, "JPROC\t%lu\tus\n", phaseTimes[2]);
+	fprintf(performanceOutputFile, "JARRANGEPROBE\t%lu\tus\n", arrangeprobe);
+	fprintf(performanceOutputFile, "JCOMMOFFSETWAIT\t%lu\tus\n", offsetcommwait);
 }
 
 /************************************************************/
@@ -271,8 +279,26 @@ uint64_t Measurements::networkPartitioningFlushPartitioningTimes[2];
 uint64_t Measurements::networkPartitioningWindowPutCount = 0;
 uint64_t Measurements::networkPartitioningWindowPutTimeSum = 0;
 
-uint64_t Measurements::networkPartitioningWindowWaitCount = 0;
+uint64_t Measurements::networkPartitioningWindowWaitCount[2] = {0};
 uint64_t Measurements::networkPartitioningWindowWaitTimeSum[2];
+
+void Measurements::startNetworkPartitioningOffsetCommWait(){
+	gettimeofday(&networkPartitioningOffsetCommWaitStart, NULL);
+}
+
+void Measurements::stopNetworkPartitioningOffsetCommWait(){
+	gettimeofday(&networkPartitioningOffsetCommWaitStop, NULL);
+	offsetcommwait = timeDiff(networkPartitioningOffsetCommWaitStop, networkPartitioningOffsetCommWaitStart);
+}
+
+void Measurements::startNetworkPartitioningArrangeProbeData() {
+	gettimeofday(&networkPartitioningArrangeProbeStart, NULL);
+}
+
+void Measurements::stopNetworkPartitioningArrangeProbeData() {
+	gettimeofday(&networkPartitioningArrangeProbeStop, NULL);
+	arrangeprobe = timeDiff(networkPartitioningArrangeProbeStop, networkPartitioningArrangeProbeStart);
+}
 
 void Measurements::startNetworkPartitioningOffsetComm() {
 	gettimeofday(&networkPartitioningMemoryAllocationStart, NULL);
@@ -333,7 +359,7 @@ void Measurements::stopNetworkPartitioningWindowWait(uint32_t id) {
 	uint64_t time = timeDiff(networkPartitioningWindowWaitStop, networkPartitioningWindowWaitStart);
 	JOIN_ASSERT(id < 2, "Performance", "Index out of bounds");
 	networkPartitioningWindowWaitTimeSum[id] += time;
-	++networkPartitioningWindowWaitCount;
+	++networkPartitioningWindowWaitCount[id];
 }
 
 void Measurements::storeNetworkPartitioningData() {
@@ -347,7 +373,8 @@ void Measurements::storeNetworkPartitioningData() {
 	fprintf(performanceOutputFile, "MWINPUTCNT\t%lu\tcalls\n", networkPartitioningWindowPutCount);
 	fprintf(performanceOutputFile, "MWINWAITBUILD\t%lu\tus\n", networkPartitioningWindowWaitTimeSum[0]);
 	fprintf(performanceOutputFile, "MWINWAITPROBE\t%lu\tus\n", networkPartitioningWindowWaitTimeSum[1]);
-	fprintf(performanceOutputFile, "MWINWAITCNT\t%lu\tcalls\n", networkPartitioningWindowWaitCount);
+	fprintf(performanceOutputFile, "MWINWAITBUILDCNT\t%lu\tcalls\n", networkPartitioningWindowWaitCount[0]);
+	fprintf(performanceOutputFile, "MWINWAITPROBECNT\t%lu\tcalls\n", networkPartitioningWindowWaitCount[1]);
 }
 
 /************************************************************/
@@ -527,12 +554,12 @@ uint64_t* Measurements::serializeResults() {
 	result[1] = totalTime;
 	result[2] = phaseTimes[0];
 	result[3] = phaseTimes[1];
-	result[4] = phaseTimes[2];
-	result[5] = specialTimes[0];
-	result[6] = specialTimes[1];
-	result[7] = specialTimes[2];
-	result[8] = localPartitioningTaskTimeSum;
-	result[9] = buildProbeTaskTimeSum;
+	result[4] = networkPartitioningMainPartitioningTimes[0];
+	result[5] = networkPartitioningWindowWaitTimeSum[0];
+	result[6] = buildProbeBuildTimeSum;
+	result[7] = networkPartitioningMainPartitioningTimes[1];
+	result[8] = networkPartitioningWindowWaitTimeSum[1];
+	result[9] = buildProbeProbeTimeSum;
 
 	return result;
 
@@ -567,7 +594,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 
 	receiveAllMeasurments(numberOfNodes, nodeId);
 
-	printf("[RESULTS] Tuples:\t");
+	printf("[RESULTS] TuplesMatching:\t");
 	uint64_t totalNumberOfTuples = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t numberOfTuples = serizlizedResults[n][0];
@@ -596,7 +623,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageHistogramTime /= numberOfNodes;
 
-	printf("[RESULTS] Network:\t");
+	printf("[RESULTS] TotalBuildAndProbe:\t");
 	uint64_t averageNetworkTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t networkTime = serizlizedResults[n][3];
@@ -606,7 +633,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageNetworkTime /= numberOfNodes;
 
-	printf("[RESULTS] Local:\t");
+	printf("[RESULTS] TotalBuildPhase:\t");
 	uint64_t averageLocalTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t localTime = serizlizedResults[n][4];
@@ -616,7 +643,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageLocalTime /= numberOfNodes;
 
-	printf("[RESULTS] WinAlloc:\t");
+	printf("[RESULTS] WaitAtBuild:\t");
 	uint64_t averageWindowAllocTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t windowAllocTime = serizlizedResults[n][5];
@@ -626,7 +653,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageWindowAllocTime /= numberOfNodes;
 
-	printf("[RESULTS] PartWait:\t");
+	printf("[RESULTS] BuildHT:\t");
 	uint64_t averagePartitionWaitingTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t partitionWaitingTime = serizlizedResults[n][6];
@@ -636,7 +663,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averagePartitionWaitingTime /= numberOfNodes;
 
-	printf("[RESULTS] LocalPrep:\t");
+	printf("[RESULTS] TotalProbePhase:\t");
 	uint64_t averageLocalPreparationTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t localPreparationTime = serizlizedResults[n][7];
@@ -646,7 +673,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageLocalPreparationTime /= numberOfNodes;
 
-	printf("[RESULTS] LocalPart:\t");
+	printf("[RESULTS] WaitAtProbe:\t");
 	uint64_t averageLocalPartitioningTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t localPartitioningTime = serizlizedResults[n][8];
@@ -656,7 +683,7 @@ void Measurements::printMeasurements(uint32_t numberOfNodes, uint32_t nodeId) {
 	printf("\n");
 	averageLocalPartitioningTime /= numberOfNodes;
 
-	printf("[RESULTS] LocalBP:\t");
+	printf("[RESULTS] ProbeHT:\t");
 	uint64_t averageLocalBuildProbeTime = 0;
 	for (uint32_t n = 0; n < numberOfNodes; ++n) {
 		uint64_t localBuildProbeTime = serizlizedResults[n][9];

@@ -71,32 +71,17 @@ NetworkPartitioning::~NetworkPartitioning() {
 void NetworkPartitioning::execute() {
 
 	JOIN_DEBUG("Network Partitioning", "Node %d is communicating Offsets and Size of both the relations", this->nodeId);
-	communicateOffsetandSize(offsetWindow, innerWindow, innerRelation, innerHistogram, offsetAndSize);
+	offsetCommAndArrangeBuild(offsetWindow, innerWindow, innerRelation, innerHistogram, offsetAndSize);
+
+	hpcjoin::performance::Measurements::startNetworkPartitioningOffsetCommWait();
 	MPI_Barrier(MPI_COMM_WORLD); 
-
-#if 0
-	offsetandsizes_t * read_data = (offsetandsizes_t *)offsetWindow->data;
-
-	for (uint32_t p = 0; p < hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
-	{
-		printf(" Node =%d, partitionID=%d, Assigned=%d, Inner offset=%d, size=%d Outer offset=%d, size=%d\n", this->nodeId, p, this->assignment[p],
-				read_data[p].partitionOffsetInner, read_data[p].partitionSizeInner, read_data[p].partitionOffsetOuter, read_data[p].partitionSizeOuter);
-	}
-	printf("Communication DONE \n");
-	return;
-#endif
+	hpcjoin::performance::Measurements::stopNetworkPartitioningOffsetCommWait();
 
 	readAndBuild(offsetWindow, innerWindow);
 	arrangeProbeRelation(offsetWindow, outerWindow, outerRelation);
 	MPI_Barrier(MPI_COMM_WORLD); 
 	readAndProbe(offsetWindow, outerWindow);
-	printf("Communication DONE \n");
 	return;
-	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning inner relation", this->nodeId);
-	partition(innerRelation, innerWindow);
-
-	JOIN_DEBUG("Network Partitioning", "Node %d is partitioning outer relation", this->nodeId);
-	partition(outerRelation, outerWindow);
 
 }
 
@@ -106,7 +91,6 @@ void NetworkPartitioning::readAndProbe(hpcjoin::data::Window *offsetWindow, hpcj
 	hpcjoin::performance::Measurements::startNetworkPartitioningMainPartitioning();
 	outerWindow->start();
 
-	uint64_t *sum;
 	uint64_t max = 0;
 	uint32_t assignedCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
 	//Imbalance of assigned partitions.
@@ -114,63 +98,60 @@ void NetworkPartitioning::readAndProbe(hpcjoin::data::Window *offsetWindow, hpcj
 	{
 		assignedCount++;
 	}
-	hpcjoin::tasks::BuildProbe *buildProbeArray[assignedCount];
-	sum = (uint64_t *)calloc(assignedCount, sizeof(uint64_t));
 	for (uint32_t a = 0; a < assignedCount; ++a)
 	{
 		offsetandsizes_t *assignedPartition = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
 		for (uint32_t n = 0; n < this->numberOfNodes; ++n)
 		{
-			sum[a] += assignedPartition[n].partitionSizeOuter;
 			if (max < assignedPartition[n].partitionSizeOuter)
 			{
 				max = assignedPartition[n].partitionSizeOuter;
 			}
 		}
 	}
-	//Increase the request size and use MPI_Waitany to wait on the array.
-	MPI_Request req[2] = { MPI_REQUEST_NULL };
+	MPI_Request *req = (MPI_Request *) calloc(this->numberOfNodes, sizeof(MPI_Request));
+
 	//create the buffer of maximum read size
-	hpcjoin::data::CompressedTuple * readBuffer[2];
-	readBuffer[0] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
-	readBuffer[1] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+	//Modify the logic to create only required memeory not more.
+	hpcjoin::data::CompressedTuple * readBuffer[this->numberOfNodes];
+	for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+	{
+		readBuffer[i] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+		req[i] = MPI_REQUEST_NULL;
+	}
 
 	for(uint32_t a = 0; a < assignedCount; ++a)
 	{
-		uint32_t i = 0;
-
+		int doneId;
 		hpcjoin::tasks::BuildProbe* task = TASK_QUEUE.front();
 		TASK_QUEUE.pop();
 		
 		offsetandsizes_t *offsetAndSize = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
 		hpcjoin::performance::Measurements::startNetworkPartitioningWindowPut(); 
-		MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeOuter*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
-				offsetAndSize[i].partitionOffsetOuter, offsetAndSize[i].partitionSizeOuter*sizeof(hpcjoin::data::CompressedTuple),
-				MPI_CHAR, *outerWindow->window, &req[i%2]);
 		hpcjoin::performance::Measurements::stopNetworkPartitioningWindowPut(); 
-		for (i = 1; i < this->numberOfNodes; ++i) 
+		for (uint32_t i = 0; i < this->numberOfNodes; ++i) 
 		{
 			hpcjoin::performance::Measurements::startNetworkPartitioningWindowPut(); 
-			MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeOuter*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+			MPI_Rget(readBuffer[i], offsetAndSize[i].partitionSizeOuter*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
 					offsetAndSize[i].partitionOffsetOuter, offsetAndSize[i].partitionSizeOuter*sizeof(hpcjoin::data::CompressedTuple),
-					MPI_CHAR, *outerWindow->window, &req[i%2]);
+					MPI_CHAR, *outerWindow->window, &req[i]);
 			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowPut(); 
-			hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
-			MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(1);
-			task->probeHT(offsetAndSize[i-1].partitionSizeOuter, readBuffer[(i-1)%2]);
 		}
-		hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
-		MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-		hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(1);
-		task->probeHT(offsetAndSize[i-1].partitionSizeOuter, readBuffer[(i-1)%2]);
+		for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+		{ 
+			hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
+			MPI_Waitany((int)this->numberOfNodes, req, &doneId, MPI_STATUS_IGNORE);
+			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(1);
+			task->probeHT(offsetAndSize[doneId].partitionSizeOuter, readBuffer[doneId]);
+		}
 
 		delete task;
 	}
 
-	free(sum);
-	free(readBuffer[1]);
-	free(readBuffer[0]);
+	for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+	{
+		free(readBuffer[i]);
+	}
 
 	hpcjoin::performance::Measurements::startNetworkPartitioningFlushPartitioning();
 	outerWindow->flush();
@@ -182,6 +163,7 @@ void NetworkPartitioning::readAndProbe(hpcjoin::data::Window *offsetWindow, hpcj
 //Arrange probe realtion data in the window for the other processes to read from.
 void NetworkPartitioning::arrangeProbeRelation(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *outerWindow, hpcjoin::data::Relation *relation)
 {
+	hpcjoin::performance::Measurements::startNetworkPartitioningArrangeProbeData();
 	uint64_t const numberOfElements = relation->getLocalSize();
 	hpcjoin::data::Tuple * const data = relation->getData();
 	uint64_t const partitionCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT;
@@ -223,6 +205,7 @@ void NetworkPartitioning::arrangeProbeRelation(hpcjoin::data::Window *offsetWind
 		inCacheBuffer[partitionId].data.memoryCounter = memoryCounter;
 
 	}
+	hpcjoin::performance::Measurements::stopNetworkPartitioningArrangeProbeData();
 }
 
 void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow)
@@ -230,6 +213,7 @@ void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcj
 	hpcjoin::performance::Measurements::startNetworkPartitioningMainPartitioning();
 	innerWindow->start();
 
+	int processes = (int) this->numberOfNodes;
 	uint64_t *sum;
 	uint64_t max = 0;
 	uint32_t assignedCount = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/this->numberOfNodes;
@@ -253,47 +237,46 @@ void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcj
 		}
 	}
 	//Increase the request size and use MPI_Waitany to wait on the array.
-	MPI_Request req[2] = { MPI_REQUEST_NULL };
+	MPI_Request *req = (MPI_Request *) calloc(this->numberOfNodes, sizeof(MPI_Request));
+
 	//create the buffer of maximum read size
-	hpcjoin::data::CompressedTuple * readBuffer[2];
-	readBuffer[0] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
-	readBuffer[1] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+	//Modify the logic to create only required memeory not more.
+	hpcjoin::data::CompressedTuple * readBuffer[this->numberOfNodes];
+	for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+	{
+		readBuffer[i] = (hpcjoin::data::CompressedTuple *)calloc(max, sizeof(hpcjoin::data::CompressedTuple));
+		req[i] = MPI_REQUEST_NULL;
+	}
 
 	for(uint32_t a = 0; a < assignedCount; ++a)
 	{
-		uint32_t i = 0;
+		int doneId;
 
 		buildProbeArray[a] = new hpcjoin::tasks::BuildProbe(sum[a]);
 		
 		offsetandsizes_t *offsetAndSize = (offsetandsizes_t *)offsetWindow->data + this->numberOfNodes*a;
-		hpcjoin::performance::Measurements::startNetworkPartitioningWindowPut(); 
-		MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
-				offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
-				MPI_CHAR, *innerWindow->window, &req[i%2]);
-		hpcjoin::performance::Measurements::stopNetworkPartitioningWindowPut(); 
-		for (i = 1; i < this->numberOfNodes; ++i) 
+		for (uint32_t i = 0; i < this->numberOfNodes; ++i) 
 		{
 			hpcjoin::performance::Measurements::startNetworkPartitioningWindowPut(); 
-			MPI_Rget(readBuffer[i%2], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
+			MPI_Rget(readBuffer[i], offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple), MPI_CHAR, i, 
 					offsetAndSize[i].partitionOffsetInner, offsetAndSize[i].partitionSizeInner*sizeof(hpcjoin::data::CompressedTuple),
-					MPI_CHAR, *innerWindow->window, &req[i%2]);
+					MPI_CHAR, *innerWindow->window, &req[i]);
 			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowPut(); 
-			hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
-			MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(0);
-			buildProbeArray[a]->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
 		}
-		hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
-		MPI_Wait(&req[(i-1)%2],MPI_STATUS_IGNORE);
-		hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(0);
-		buildProbeArray[a]->buildHT(offsetAndSize[i-1].partitionSizeInner, readBuffer[(i-1)%2]);
-
+		for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+		{ 
+			hpcjoin::performance::Measurements::startNetworkPartitioningWindowWait();
+			MPI_Waitany((int)this->numberOfNodes, req, &doneId, MPI_STATUS_IGNORE);
+			hpcjoin::performance::Measurements::stopNetworkPartitioningWindowWait(0);
+			buildProbeArray[a]->buildHT(offsetAndSize[doneId].partitionSizeInner, readBuffer[doneId]);
+		}
 		TASK_QUEUE.push(buildProbeArray[a]);
 	}
 	free(sum);
-	free(readBuffer[1]);
-	free(readBuffer[0]);
-
+	for (uint32_t i = 0; i < this->numberOfNodes; ++i)
+	{
+		free(readBuffer[i]);
+	}
 	hpcjoin::performance::Measurements::startNetworkPartitioningFlushPartitioning();
 	innerWindow->flush();
 	hpcjoin::performance::Measurements::stopNetworkPartitioningFlushPartitioning();
@@ -301,7 +284,7 @@ void NetworkPartitioning::readAndBuild(hpcjoin::data::Window *offsetWindow, hpcj
 	hpcjoin::performance::Measurements::stopNetworkPartitioningMainPartitioning();
 }
 
-void NetworkPartitioning::communicateOffsetandSize(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation,
+void NetworkPartitioning::offsetCommAndArrangeBuild(hpcjoin::data::Window *offsetWindow, hpcjoin::data::Window *innerWindow, hpcjoin::data::Relation *relation,
 		uint64_t* innerHistogram, offsetandsizes_t* offsetAndSize) 
 {
 

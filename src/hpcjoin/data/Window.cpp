@@ -33,7 +33,8 @@ Window::Window(uint32_t numberOfNodes, uint32_t nodeId, uint32_t* assignment, ui
 	if (this->isOffsetWindow)
 	{
 		uint32_t partitionsPerProcesses = hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT/numberOfNodes;
-		if(this->nodeId > partitionsPerProcesses*numberOfNodes)
+		//Imbalance of assigned partitions.
+		if(this->nodeId < (hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT - this->numberOfNodes*partitionsPerProcesses))
 		{
 			this->localWindowSize = (this->numberOfNodes * 4 * (partitionsPerProcesses+1));
 		}
