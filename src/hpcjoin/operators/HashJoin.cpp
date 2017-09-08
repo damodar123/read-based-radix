@@ -56,28 +56,7 @@ void HashJoin::join() {
 	histogramComputation->execute();
 	hpcjoin::performance::Measurements::stopHistogramComputation();
 	JOIN_MEM_DEBUG("Histogram phase completed");
-#if 0 
-	if (this->nodeId == hpcjoin::core::Configuration::RESULT_AGGREGATION_NODE) 
-	{
-		uint64_t *innerhistogram = histogramComputation->getInnerRelationLocalHistogram();
-		uint64_t *outerhistogram = histogramComputation->getOuterRelationLocalHistogram();
-		uint64_t *innerOffset = histogramComputation->getInnerRelationBaseOffsets();
-		uint64_t *outerOffset = histogramComputation->getOuterRelationBaseOffsets();
-		printf("Inner Local Histogram = ");
-		for(uint32_t p=0; p<hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
-		{
-			printf("\t %d,%d", innerhistogram[p], innerOffset[p]);
-		}
-		printf("\n");
-		for(uint32_t p=0; p<hpcjoin::core::Configuration::NETWORK_PARTITIONING_COUNT; ++p)
-		{
-			printf("\t %d,%d", outerhistogram[p], outerOffset[p]);
-		}
-		printf("\n");
-	}
-	MPI_Barrier(MPI_COMM_WORLD);
-	return;
-#endif
+
 	/**********************************************************************/
 
 	/**
@@ -85,7 +64,6 @@ void HashJoin::join() {
 	 */
 
 	hpcjoin::performance::Measurements::startWindowAllocation();
-	/* Window creation + Data Arrangement + Offset calculation */
 	hpcjoin::data::Window *offsetWindow = new hpcjoin::data::Window(this->numberOfNodes, this->nodeId, histogramComputation->getAssignment(),
 			NULL, NULL, NULL, NULL, true);
 
@@ -96,8 +74,6 @@ void HashJoin::join() {
 			histogramComputation->getOuterRelationLocalHistogram(), this->outerRelation, NULL, NULL, false);
 	hpcjoin::performance::Measurements::stopWindowAllocation();
 	JOIN_MEM_DEBUG("Window allocated");
-	//MPI_Barrier(MPI_COMM_WORLD);
-	//return;
 
 	/**********************************************************************/
 

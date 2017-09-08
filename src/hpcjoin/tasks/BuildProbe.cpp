@@ -49,6 +49,7 @@ BuildProbe::BuildProbe(uint64_t innerPartitionSize) {
 
 BuildProbe::~BuildProbe() {
 
+	free(this->innerPartition);
 	free(this->hashTableNext);
 	free(this->hashTableBucket);
 }
@@ -88,7 +89,6 @@ void BuildProbe::buildHT(uint64_t innerPartSize, hpcjoin::data::CompressedTuple 
 #endif
 	JOIN_DEBUG("Build-Probe", "Building Hash table of size %lu", innerPartSize);
 
-	//TODO: cross check the offset
 	memcpy(this->innerPartition + this->nextIndex, innerPart, innerPartSize);
 
 	for (uint64_t t=0; t<innerPartSize; ++t) {
